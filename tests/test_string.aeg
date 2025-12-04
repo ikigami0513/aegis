@@ -1,0 +1,25 @@
+print "--- TEST STRING MANIPULATION ---"
+
+var raw = "   pomme,poire,banane   "
+print "Original: '" + raw + "'"
+
+// 1. Test Trim
+var clean = raw.trim()
+print "Trimmed : '" + clean + "'"
+
+// 2. Test Split
+var parts = clean.split(",")
+print "Split result (List): " + parts
+print "Element 0: " + parts.at(0)
+print "Element 1: " + parts.at(1)
+
+// 3. Test Replace
+var message = "Hello World"
+var new_message = message.replace("World", "Aegis")
+print "Replace: " + message + " -> " + new_message
+
+// 4. Chainage (Variable intermédiaire nécessaire car ton parser actuel ne gère pas "str".m().m() directement sans parenthèses imbriquées)
+var sentence = "  un_deux_trois  "
+var temp = sentence.trim()
+var res = temp.replace("_", " ")
+print "Chainage manuel: '" + res + "'"

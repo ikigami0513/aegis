@@ -164,7 +164,19 @@ pub fn evaluate(expr: &Expression, env: SharedEnv) -> Result<Value, String> {
                     "push" => { l.borrow_mut().push(resolved[0].clone()); Ok(Value::Null) },
                     "pop" => Ok(l.borrow_mut().pop().unwrap_or(Value::Null)),
                     "len" => Ok(Value::Integer(l.borrow().len() as i64)),
-                    "at" => Ok(l.borrow()[resolved[1].clone().as_int()? as usize].clone()),
+                    "at" => {
+                        // 1. On récupère l'index (c'est l'argument 0, et non 1)
+                        if resolved.is_empty() { return Err("List.at() expects 1 argument".into()); }
+                        let index = resolved[0].as_int()? as usize;
+                        
+                        // 2. On sécurise l'accès pour éviter le panic Rust
+                        let list = l.borrow();
+                        if index >= list.len() {
+                            return Err(format!("Index out of bounds: {} (len: {})", index, list.len()));
+                        }
+                        
+                        Ok(list[index].clone())
+                    },
                     _ => Err("Method list unknown".into())
                 },
                 Value::Dict(d) => match method.as_str() {
@@ -174,6 +186,43 @@ pub fn evaluate(expr: &Expression, env: SharedEnv) -> Result<Value, String> {
                     "len" => Ok(Value::Integer(d.borrow().len() as i64)),
                     _ => Err("Method dict unknown".into())
                 },
+                Value::String(s) => match method.as_str() {
+                    "trim" => {
+                        // Usage: "  hello  ".trim() -> "hello"
+                        Ok(Value::String(s.trim().to_string()))
+                    },
+                    "split" => {
+                        // Usage: "a,b,c".split(",") -> ["a", "b", "c"]
+                        if resolved.len() != 1 { return Err("split expects 1 argument (separator)".into()); }
+                        
+                        let separator = match &resolved[0] {
+                            Value::String(sep) => sep,
+                            _ => return Err("Separator must be a string".into())
+                        };
+
+                        let parts: Vec<Value> = s.split(separator)
+                            .map(|p| Value::String(p.to_string()))
+                            .collect();
+                        
+                        Ok(Value::List(Rc::new(RefCell::new(parts))))
+                    },
+                    "replace" => {
+                        // Usage: "hello world".replace("world", "Aegis")
+                        if resolved.len() != 2 { return Err("replace expects 2 arguments (old, new)".into()); }
+                        
+                        let old_s = match &resolved[0] {
+                            Value::String(v) => v,
+                            _ => return Err("Argument 1 must be string".into())
+                        };
+                        let new_s = match &resolved[1] {
+                            Value::String(v) => v,
+                            _ => return Err("Argument 2 must be string".into())
+                        };
+
+                        Ok(Value::String(s.replace(old_s, new_s)))
+                    },
+                    _ => Err(format!("Unknown method '{}' on String", method))
+                }
                 Value::Instance(inst) => {
                      let class_name = inst.borrow().class_name.clone();
                      let mut cur = Some(class_name);
