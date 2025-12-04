@@ -1,8 +1,8 @@
 mod ast;
+mod compiler;
 mod environment;
-mod parser;
 mod interpreter;
-mod compiler; // <--- NOUVEAU MODULE
+mod loader;
 
 use environment::Environment;
 use std::{fs, env};
@@ -14,16 +14,19 @@ fn main() -> Result<(), String> {
     let filename = &args[1];
     let content = fs::read_to_string(filename).map_err(|e| e.to_string())?;
 
-    // --- LOGIQUE DE DETECTION Aegis / JSON ---
+    // 1. Compilation (Texte -> JSON)
     let json_data: JsonValue = if filename.ends_with(".aeg") {
         println!("Compiling Aegis...");
         compiler::compile(&content)?
     } else {
+        // Support direct du JSON
         serde_json::from_str(&content).map_err(|e| e.to_string())?
     };
     
-    // Suite inchangée (Compilation AST -> Exécution)
-    let instructions = parser::parse_block(&json_data)?;
+    // 2. Loading (JSON -> AST Rust)
+    let instructions = loader::parse_block(&json_data)?;
+    
+    // 3. Execution
     let global_env = Environment::new_global();
 
     println!("--- Début de l'exécution ---");

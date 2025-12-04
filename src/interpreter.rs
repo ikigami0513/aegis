@@ -1,7 +1,7 @@
 use crate::ast::{Instruction, Expression, Value};
 use crate::compiler;
 use crate::environment::Environment;
-use crate::parser::parse_block;
+use crate::loader::parse_block;
 use std::collections::HashMap;
 use std::fs;
 use std::rc::Rc;
