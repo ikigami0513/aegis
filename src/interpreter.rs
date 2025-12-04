@@ -2,6 +2,7 @@ use crate::ast::{Instruction, Expression, Value};
 use crate::environment::Environment;
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::io::{self, Write};
 
 // Type alias pour simplifier les signatures
 type SharedEnv = Rc<RefCell<Environment>>;
@@ -274,6 +275,35 @@ pub fn execute(instr: &Instruction, env: SharedEnv) -> Result<Option<Value>, Str
 
         Instruction::Function { name, params, body } => {
             env.borrow_mut().define_function(name.clone(), params.clone(), body.clone());
+            Ok(None)
+        },
+
+        Instruction::Input(var_name, prompt_expr) => {
+            // 1. Évaluer et afficher le prompt
+            let prompt_val = evaluate(prompt_expr, env.clone())?;
+            print!("{}", prompt_val);
+            
+            // Force l'affichage immédiat du prompt (sinon il peut rester dans le buffer)
+            io::stdout().flush().map_err(|e| e.to_string())?;
+
+            // 2. Lire l'entrée utilisateur
+            let mut buffer = String::new();
+            io::stdin().read_line(&mut buffer).map_err(|e| e.to_string())?;
+            
+            // Retirer le saut de ligne à la fin (\n)
+            let input = buffer.trim();
+
+            // 3. Inférence de type (Int -> Float -> String)
+            let val = if let Ok(i) = input.parse::<i64>() {
+                Value::Integer(i)
+            } else if let Ok(f) = input.parse::<f64>() {
+                Value::Float(f)
+            } else {
+                Value::String(input.to_string())
+            };
+
+            // 4. Stocker dans la variable
+            env.borrow_mut().set_variable(var_name.clone(), val);
             Ok(None)
         },
     }

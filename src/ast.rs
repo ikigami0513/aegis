@@ -79,5 +79,7 @@ pub enum Instruction {
         name: String,
         params: Vec<String>,
         body: Vec<Instruction>
-    }
+    },
+    // ["input", "var_name", "Prompt text"]
+    Input(String, Expression),
 }

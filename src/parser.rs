@@ -205,6 +205,17 @@ pub fn parse_instruction(json_instr: &JsonValue) -> Result<Instruction, String> 
             
             Ok(Instruction::Function { name, params, body })
         },
+        "input" => {
+            // ["input", "nom_var", "Texte du prompt"]
+            let var_name = array.get(1)
+                .and_then(|v| v.as_str())
+                .ok_or("Input attend un nom de variable (string)")?
+                .to_string();
+            
+            let prompt = parse_expression(&array[2])?;
+            
+            Ok(Instruction::Input(var_name, prompt))
+        },
         _ => Err(format!("Instruction inconnue: {}", command)),
     }
 }
