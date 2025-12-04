@@ -16,8 +16,8 @@ fn is_truthy(val: &Value) -> bool {
         Value::Integer(i) => *i != 0,
         Value::Float(f) => *f != 0.0,
         Value::String(s) => !s.is_empty(),
-        Value::List(l) => !l.is_empty(),
-        Value::Dict(d) => !d.is_empty(),
+        Value::List(l) => !l.borrow().is_empty(),
+        Value::Dict(d) => !d.borrow().is_empty(),
         Value::Instance(_) => true,
     }
 }
@@ -26,14 +26,9 @@ fn is_truthy(val: &Value) -> bool {
 pub fn evaluate(expr: &Expression, env: SharedEnv) -> Result<Value, String> {
     match expr {
         Expression::Literal(v) => Ok(v.clone()),
-        
-        Expression::Variable(name) => {
-            env.borrow().get_variable(name)
-                .ok_or_else(|| format!("Variable non définie : {}", name))
-        },
+        Expression::Variable(name) => env.borrow().get_variable(name).ok_or_else(|| format!("Variable non définie : {}", name)),
 
         // --- ARITHMÉTIQUE ---
-        
         Expression::Add(left, right) => {
             let l = evaluate(left, env.clone())?;
             let r = evaluate(right, env.clone())?;
@@ -42,281 +37,180 @@ pub fn evaluate(expr: &Expression, env: SharedEnv) -> Result<Value, String> {
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
                 (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(a as f64 + b)),
                 (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a + b as f64)),
-                // Concaténation
                 (Value::String(a), b) => Ok(Value::String(format!("{}{}", a, b))),
                 (a, Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
-                _ => Err("Types incompatibles pour l'addition".to_string()),
+                _ => Err("Types incompatibles pour +".into()),
             }
         },
-
         Expression::Sub(left, right) => {
-            let l = evaluate(left, env.clone())?;
-            let r = evaluate(right, env.clone())?;
-            match (l, r) {
+            match (evaluate(left, env.clone())?, evaluate(right, env.clone())?) {
                 (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a - b)),
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
                 (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(a as f64 - b)),
                 (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a - b as f64)),
-                _ => Err("Types incompatibles pour la soustraction".to_string()),
+                _ => Err("Types incompatibles pour -".into()),
             }
         },
-
         Expression::Mul(left, right) => {
-            let l = evaluate(left, env.clone())?;
-            let r = evaluate(right, env.clone())?;
-            match (l, r) {
+             match (evaluate(left, env.clone())?, evaluate(right, env.clone())?) {
                 (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a * b)),
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
                 (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(a as f64 * b)),
                 (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a * b as f64)),
-                _ => Err("Types incompatibles pour la multiplication".to_string()),
+                _ => Err("Types incompatibles pour *".into()),
             }
         },
-
         Expression::Div(left, right) => {
-            let l = evaluate(left, env.clone())?;
-            let r = evaluate(right, env.clone())?;
-            match (l, r) {
-                (Value::Integer(a), Value::Integer(b)) => {
-                    if b == 0 { return Err("Division par zéro".to_string()); }
-                    // Division entière par défaut pour Int/Int
-                    Ok(Value::Integer(a / b)) 
-                },
-                (Value::Float(a), Value::Float(b)) => {
-                    if b == 0.0 { return Err("Division par zéro".to_string()); }
-                    Ok(Value::Float(a / b))
-                },
-                (Value::Integer(a), Value::Float(b)) => {
-                    if b == 0.0 { return Err("Division par zéro".to_string()); }
-                    Ok(Value::Float(a as f64 / b))
-                },
-                (Value::Float(a), Value::Integer(b)) => {
-                    if b == 0 { return Err("Division par zéro".to_string()); }
-                    Ok(Value::Float(a / b as f64))
-                },
-                _ => Err("Types incompatibles pour la division".to_string()),
+             match (evaluate(left, env.clone())?, evaluate(right, env.clone())?) {
+                (Value::Integer(a), Value::Integer(b)) => if b==0 {Err("Div / 0".into())} else {Ok(Value::Integer(a/b))},
+                (Value::Float(a), Value::Float(b)) => if b==0.0 {Err("Div / 0".into())} else {Ok(Value::Float(a/b))},
+                (Value::Integer(a), Value::Float(b)) => if b==0.0 {Err("Div / 0".into())} else {Ok(Value::Float(a as f64 / b))},
+                (Value::Float(a), Value::Integer(b)) => if b==0 {Err("Div / 0".into())} else {Ok(Value::Float(a / b as f64))},
+                _ => Err("Types incompatibles pour /".into()),
             }
         },
 
-        // --- COMPARAISONS ---
-
-        Expression::Equal(left, right) => {
-            let l = evaluate(left, env.clone())?;
-            let r = evaluate(right, env.clone())?;
-            // Rust gère l'égalité profonde via PartialEq dérivé sur l'enum Value
-            Ok(Value::Boolean(l == r))
+        // --- LOGIQUE (NOUVEAU) ---
+        Expression::Not(expr) => {
+            let val = evaluate(expr, env)?;
+            Ok(Value::Boolean(!is_truthy(&val)))
         },
-
-        Expression::LessThan(left, right) => {
-            let l = evaluate(left, env.clone())?;
-            let r = evaluate(right, env.clone())?;
-            match (l, r) {
-                (Value::Integer(a), Value::Integer(b)) => Ok(Value::Boolean(a < b)),
-                (Value::Float(a), Value::Float(b)) => Ok(Value::Boolean(a < b)),
-                (Value::Integer(a), Value::Float(b)) => Ok(Value::Boolean((a as f64) < b)),
-                (Value::Float(a), Value::Integer(b)) => Ok(Value::Boolean(a < (b as f64))),
-                _ => Err("Comparaison impossible pour ces types".to_string()),
+        Expression::And(left, right) => {
+            let l_val = evaluate(left, env.clone())?;
+            // Court-circuit : Si gauche est faux, on retourne false immédiatement
+            if !is_truthy(&l_val) {
+                Ok(Value::Boolean(false))
+            } else {
+                let r_val = evaluate(right, env)?;
+                Ok(Value::Boolean(is_truthy(&r_val)))
             }
         },
-
-        Expression::New(class_name, args_exprs) => {
-            // 1. Trouver la classe
-            let cls_def = env.borrow().get_class(class_name)
-                .ok_or_else(|| format!("Classe inconnue : {}", class_name))?;
-            
-            // 2. Évaluer les arguments du constructeur
-            let mut resolved_args = Vec::new();
-            for arg in args_exprs {
-                resolved_args.push(evaluate(arg, env.clone())?);
+        Expression::Or(left, right) => {
+            let l_val = evaluate(left, env.clone())?;
+            // Court-circuit : Si gauche est vrai, on retourne true immédiatement
+            if is_truthy(&l_val) {
+                Ok(Value::Boolean(true))
+            } else {
+                let r_val = evaluate(right, env)?;
+                Ok(Value::Boolean(is_truthy(&r_val)))
             }
-            
-            if resolved_args.len() != cls_def.params.len() {
-                return Err("Nombre d'arguments constructeur incorrect".to_string());
-            }
+        },
 
-            // 3. Créer les données de l'instance
+        // --- COMPARAISONS (MISE À JOUR) ---
+        Expression::Equal(left, right) => Ok(Value::Boolean(evaluate(left, env.clone())? == evaluate(right, env)?)),
+        Expression::NotEqual(left, right) => Ok(Value::Boolean(evaluate(left, env.clone())? != evaluate(right, env)?)),
+        
+        Expression::LessThan(left, right) => compare_nums(evaluate(left, env.clone())?, evaluate(right, env)?, |a,b| a < b),
+        Expression::GreaterThan(left, right) => compare_nums(evaluate(left, env.clone())?, evaluate(right, env)?, |a,b| a > b),
+        Expression::LessEqual(left, right) => compare_nums(evaluate(left, env.clone())?, evaluate(right, env)?, |a,b| a <= b),
+        Expression::GreaterEqual(left, right) => compare_nums(evaluate(left, env.clone())?, evaluate(right, env)?, |a,b| a >= b),
+
+        // --- POO & STRUCTURES ---
+        Expression::New(class_name, args) => {
+            let cls = env.borrow().get_class(class_name).ok_or("Classe inconnue")?;
+            let mut resolved = Vec::new();
+            for a in args { resolved.push(evaluate(a, env.clone())?); }
+            if resolved.len() != cls.params.len() { return Err("Constructeur arity mismatch".into()); }
             let mut fields = HashMap::new();
-            for (param_name, val) in cls_def.params.iter().zip(resolved_args) {
-                fields.insert(param_name.clone(), val);
-            }
-
-            // 4. Retourner l'instance wrappée dans Rc<RefCell>
-            let instance_data = crate::ast::InstanceData {
-                class_name: class_name.clone(),
-                fields
-            };
-            Ok(Value::Instance(Rc::new(RefCell::new(instance_data))))
+            for (p, v) in cls.params.iter().zip(resolved) { fields.insert(p.clone(), v); }
+            Ok(Value::Instance(Rc::new(RefCell::new(crate::ast::InstanceData { class_name: class_name.clone(), fields }))))
         },
-
-        Expression::GetAttr(obj_expr, attr_name) => {
-            let obj_val = evaluate(obj_expr, env.clone())?;
-            if let Value::Instance(inst_rc) = obj_val {
-                let inst = inst_rc.borrow();
-                if let Some(val) = inst.fields.get(attr_name) {
-                    return Ok(val.clone());
-                } else {
-                    return Err(format!("Attribut '{}' non trouvé", attr_name));
-                }
-            }
-            Err("GetAttr sur non-instance".to_string())
-        },
-
-        Expression::CallMethod(obj_expr, method_name, args_exprs) => {
-            // 1. Obtenir l'instance (this)
-            let obj_val = evaluate(obj_expr, env.clone())?;
-            
-            // Vérification que c'est bien une instance
-            let (class_name, instance_rc) = match &obj_val {
-                Value::Instance(rc) => (rc.borrow().class_name.clone(), rc.clone()),
-                _ => return Err("CallMethod sur non-instance".to_string()),
-            };
-
-            // 2. Évaluer les arguments
-            let mut resolved_args = Vec::new();
-            for arg in args_exprs {
-                resolved_args.push(evaluate(arg, env.clone())?);
-            }
-
-            // 3. Résolution de méthode (Héritage)
-            let mut current_class_name = Some(class_name);
-            let mut method_found = None;
-
-            while let Some(name) = current_class_name {
-                let cls = env.borrow().get_class(&name)
-                    .ok_or_else(|| format!("Classe corrompue dans l'héritage: {}", name))?;
-                
-                if let Some(method_def) = cls.methods.get(method_name) {
-                    method_found = Some(method_def.clone());
-                    break;
-                }
-                current_class_name = cls.parent.clone();
-            }
-
-            let (params, body) = method_found.ok_or_else(|| format!("Méthode '{}' non trouvée", method_name))?;
-
-            // 4. Préparer l'exécution
-            if resolved_args.len() != params.len() {
-                return Err("Arity mismatch method".to_string());
-            }
-
-            let child_env = Environment::new_child(env.clone());
-            
-            // INJECTION DE 'this'
-            child_env.borrow_mut().set_variable("this".to_string(), Value::Instance(instance_rc));
-
-            for (p, v) in params.iter().zip(resolved_args) {
-                child_env.borrow_mut().set_variable(p.clone(), v);
-            }
-
-            // 5. Exécution
-            for instr in body {
-                if let Some(ret) = execute(&instr, child_env.clone())? {
-                    return Ok(ret);
-                }
-            }
-            Ok(Value::Null)
-        },
-
-        // --- FONCTIONS ---
-
-        Expression::FunctionCall(name, args_exprs) => {
-            // Note: Pour implémenter cela complètement, l'Environnement doit stocker les fonctions.
-            // Pour l'instant, on gère juste les appels natifs basiques ou on renvoie une erreur.
-            
-            // Évaluation des arguments
-            let mut resolved_args = Vec::new();
-            for arg_expr in args_exprs {
-                resolved_args.push(evaluate(arg_expr, env.clone())?);
-            }
-
-            match name.as_str() {
-                "len" => {
-                    if resolved_args.len() != 1 { return Err("len() attend 1 argument".to_string()); }
-                    match &resolved_args[0] {
-                        Value::String(s) => Ok(Value::Integer(s.len() as i64)),
-                        Value::List(l) => Ok(Value::Integer(l.len() as i64)),
-                        Value::Dict(d) => Ok(Value::Integer(d.len() as i64)),
-                        _ => Err("len() ne supporte pas ce type".to_string()),
-                    }
-                },
-                "str" => {
-                    if resolved_args.len() != 1 { return Err("str() attend 1 argument".to_string()); }
-                    Ok(Value::String(format!("{}", resolved_args[0])))
-                },
-                "to_int" => {
-                    if resolved_args.len() != 1 { return Err("to_int() attend 1 argument".to_string()); }
-                    match &resolved_args[0] {
-                        Value::String(s) => {
-                            let i = s.trim().parse::<i64>().map_err(|_| "Conversion impossible".to_string())?;
-                            Ok(Value::Integer(i))
-                        },
-                        Value::Float(f) => Ok(Value::Integer(*f as i64)),
-                        Value::Integer(i) => Ok(Value::Integer(*i)),
-                        _ => Err("Type incompatible pour to_int".to_string()),
-                    }
-                },
-                "at" => {
-                    if resolved_args.len() != 2 { return Err("at() attend 2 arguments".to_string()); }
-                    let index = match resolved_args[1] {
-                        Value::Integer(i) => i as usize,
-                        _ => return Err("Index doit être entier".to_string()),
-                    };
-                    match &resolved_args[0] {
-                        Value::List(l) => {
-                            if index >= l.len() { return Err("Index hors limites".to_string()); }
-                            Ok(l[index].clone())
-                        },
-                        _ => Err("at() supporte uniquement les listes pour l'instant".to_string()),
-                    }
-                },
-                // Fonction utilisateur
-                _ => {
-                    let func_def_opt = env.borrow().get_function(name);
-
-                    if let Some(func_def) = func_def_opt {
-                        if resolved_args.len() != func_def.params.len() {
-                            return Err(format!("Arity mismatch: {} attend {} args", name, func_def.params.len()));
-                        }
-
-                        // 4. Créer le scope enfant
-                        let child_env = Environment::new_child(env.clone());
-
-                        // 5. Injecter les arguments
-                        for (param_name, arg_val) in func_def.params.iter().zip(resolved_args) {
-                            child_env.borrow_mut().set_variable(param_name.clone(), arg_val);
-                        }
-
-                        // 6. Exécuter le corps
-                        // Note : il faut importer execute dans evaluate ou le rendre dispo
-                        for instr in func_def.body {
-                            // Appel récursif de execute
-                            if let Some(ret_val) = execute(&instr, child_env.clone())? {
-                                return Ok(ret_val);
-                            }
-                        }
-                        return Ok(Value::Null); // Pas de return explicite
-                    }
-
-                    Err(format!("Fonction inconnue : {}", name))
-                }
-            }
+        Expression::GetAttr(obj, attr) => {
+            if let Value::Instance(i) = evaluate(obj, env)? {
+                i.borrow().fields.get(attr).cloned().ok_or("Attribut introuvable".into())
+            } else { Err("Pas une instance".into()) }
         },
         Expression::List(exprs) => {
-            let mut values = Vec::new();
-            for e in exprs {
-                values.push(evaluate(e, env.clone())?);
-            }
-            Ok(Value::List(values))
+            let mut vals = Vec::new();
+            for e in exprs { vals.push(evaluate(e, env.clone())?); }
+            Ok(Value::List(Rc::new(RefCell::new(vals))))
+        },
+        Expression::Dict(entries) => {
+            let mut d = HashMap::new();
+            for (k, e) in entries { d.insert(k.clone(), evaluate(e, env.clone())?); }
+            Ok(Value::Dict(Rc::new(RefCell::new(d))))
         },
 
-        Expression::Dict(entries) => {
-            let mut dict = HashMap::new();
-            for (key, expr) in entries {
-                let val = evaluate(expr, env.clone())?;
-                dict.insert(key.clone(), val);
+        // Appels de méthodes (Copie optimisée de ton code précédent)
+        Expression::CallMethod(obj, method, args) => {
+            let obj_val = evaluate(obj, env.clone())?;
+            let mut resolved = Vec::new();
+            for a in args { resolved.push(evaluate(a, env.clone())?); }
+
+            match &obj_val {
+                Value::List(l) => match method.as_str() {
+                    "push" => { l.borrow_mut().push(resolved[0].clone()); Ok(Value::Null) },
+                    "pop" => Ok(l.borrow_mut().pop().unwrap_or(Value::Null)),
+                    "len" => Ok(Value::Integer(l.borrow().len() as i64)),
+                    "at" => Ok(l.borrow()[resolved[1].clone().as_int()? as usize].clone()),
+                    _ => Err("Method list unknown".into())
+                },
+                Value::Dict(d) => match method.as_str() {
+                    "insert" => { d.borrow_mut().insert(resolved[0].clone().as_str()?, resolved[1].clone()); Ok(Value::Null) },
+                    "remove" => Ok(d.borrow_mut().remove(&resolved[0].clone().as_str()?).unwrap_or(Value::Null)),
+                    "keys" => Ok(Value::List(Rc::new(RefCell::new(d.borrow().keys().map(|k| Value::String(k.clone())).collect())))),
+                    "len" => Ok(Value::Integer(d.borrow().len() as i64)),
+                    _ => Err("Method dict unknown".into())
+                },
+                Value::Instance(inst) => {
+                     let class_name = inst.borrow().class_name.clone();
+                     let mut cur = Some(class_name);
+                     let mut m_def = None;
+                     while let Some(n) = cur {
+                         let e = env.borrow();
+                         let cls = e.get_class(&n).ok_or("Class lost")?;
+                         if let Some(m) = cls.methods.get(method) { m_def = Some(m.clone()); break; }
+                         cur = cls.parent.clone();
+                     }
+                     let (params, body) = m_def.ok_or("Method not found")?;
+                     let child = Environment::new_child(env.clone());
+                     child.borrow_mut().set_variable("this".into(), Value::Instance(inst.clone()));
+                     for (p, v) in params.iter().zip(resolved) { child.borrow_mut().set_variable(p.clone(), v); }
+                     for i in body { if let Some(r) = execute(&i, child.clone())? { return Ok(r); } }
+                     Ok(Value::Null)
+                },
+                _ => Err("No method on this type".into())
             }
-            Ok(Value::Dict(dict))
         },
+        
+        // Appels de fonctions (Simple wrapper)
+        Expression::FunctionCall(name, args) => {
+             let mut resolved = Vec::new();
+             for a in args { resolved.push(evaluate(a, env.clone())?); }
+             
+             // Built-ins
+             match name.as_str() {
+                 "str" => return Ok(Value::String(format!("{}", resolved[0]))),
+                 "to_int" => return Ok(Value::Integer(resolved[0].as_int()?)),
+                 "len" => { // Support générique len()
+                     match &resolved[0] {
+                         Value::String(s) => return Ok(Value::Integer(s.len() as i64)),
+                         Value::List(l) => return Ok(Value::Integer(l.borrow().len() as i64)),
+                         Value::Dict(d) => return Ok(Value::Integer(d.borrow().len() as i64)),
+                         _ => return Err("Type not supported for len()".into())
+                     }
+                 },
+                 _ => {}
+             }
+
+             // Fonctions utilisateur
+             let func = env.borrow().get_function(name).ok_or(format!("Fonction {} inconnue", name))?;
+             let child = Environment::new_child(env.clone());
+             for (p, v) in func.params.iter().zip(resolved) { child.borrow_mut().set_variable(p.clone(), v); }
+             for i in func.body { if let Some(r) = execute(&i, child.clone())? { return Ok(r); } }
+             Ok(Value::Null)
+        }
+    }
+}
+
+fn compare_nums<F>(l: Value, r: Value, op: F) -> Result<Value, String> 
+where F: Fn(f64, f64) -> bool {
+    match (l, r) {
+        (Value::Integer(a), Value::Integer(b)) => Ok(Value::Boolean(op(a as f64, b as f64))),
+        (Value::Float(a), Value::Float(b)) => Ok(Value::Boolean(op(a, b))),
+        (Value::Integer(a), Value::Float(b)) => Ok(Value::Boolean(op(a as f64, b))),
+        (Value::Float(a), Value::Integer(b)) => Ok(Value::Boolean(op(a, b as f64))),
+        _ => Err("Comparaison impossible".into())
     }
 }
 

@@ -16,6 +16,7 @@ pub enum Token {
     // Symboles
     Plus, Minus, Star, Slash, Percent,
     Eq, EqEq, Neq, Lt, Gt, LtEq, GtEq,
+    And, Or, Bang,
     LParen, RParen, LBrace, RBrace, LBracket, RBracket,
     Comma, Dot, Colon,
     EOF,
@@ -69,15 +70,6 @@ impl<'a> Lexer<'a> {
                         tokens.push(Token::Eq);
                     }
                 }
-                '!' => {
-                    self.chars.next();
-                    if let Some(&'=') = self.chars.peek() {
-                        self.chars.next();
-                        tokens.push(Token::Neq);
-                    } else {
-                        panic!("Unexpected char '!'");
-                    }
-                }
                 '<' => {
                     self.chars.next();
                     if let Some(&'=') = self.chars.peek() {
@@ -95,7 +87,35 @@ impl<'a> Lexer<'a> {
                     } else {
                         tokens.push(Token::Gt);
                     }
-                }
+                },
+                '&' => {
+                    self.chars.next();
+                    if let Some(&'&') = self.chars.peek() {
+                        self.chars.next();
+                        tokens.push(Token::And);
+                    }
+                    else {
+                        panic!("Caractère '&' seul non supporté (utilisez '&&')");
+                    }
+                },
+                '|' => {
+                    self.chars.next();
+                    if let Some(&'|') = self.chars.peek() {
+                        self.chars.next();
+                        tokens.push(Token::Or);
+                    } else {
+                        panic!("Caractère '|' seul non supporté (utilisez '||')");
+                    }
+                },
+                '!' => {
+                    self.chars.next();
+                    if let Some(&'=') = self.chars.peek() {
+                        self.chars.next();
+                        tokens.push(Token::Neq); // !=
+                    } else {
+                        tokens.push(Token::Bang); // ! (Not)
+                    }
+                },
                 '"' => tokens.push(self.read_string()),
                 c if c.is_digit(10) => tokens.push(self.read_number()),
                 c if c.is_alphabetic() || c == '_' => tokens.push(self.read_identifier()),
@@ -467,18 +487,52 @@ impl Parser {
     // Pour simplifier, on fait: Logic > Additive > Multiplicative > Primary
 
     fn parse_expression(&mut self) -> Result<Value, String> {
-        self.parse_logic()
+        self.parse_logical_or()
     }
 
-    fn parse_logic(&mut self) -> Result<Value, String> {
-        let mut left = self.parse_additive()?;
-        
-        while let Token::EqEq | Token::Lt | Token::Gt = self.peek() {
+    fn parse_logical_or(&mut self) -> Result<Value, String> {
+        let mut left = self.parse_logical_and()?;
+        while self.match_token(Token::Or) {
+            let right = self.parse_logical_and()?;
+            left = json!(["||", left, right]);
+        }
+        Ok(left)
+    }
+
+    fn parse_logical_and(&mut self) -> Result<Value, String> {
+        let mut left = self.parse_equality()?;
+        while self.match_token(Token::And) {
+            let right = self.parse_equality()?;
+            left = json!(["&&", left, right]);
+        }
+        Ok(left)
+    }
+
+    // Renomme ton ancien "parse_logic" en "parse_equality" et ajoute !=
+    fn parse_equality(&mut self) -> Result<Value, String> {
+        let mut left = self.parse_relational()?; // Appel vers comparaison
+        while let Token::EqEq | Token::Neq = self.peek() {
             let op = match self.advance() {
                 Token::EqEq => "==",
+                Token::Neq => "!=",
+                _ => unreachable!(),
+            };
+            let right = self.parse_relational()?;
+            left = json!([op, left, right]);
+        }
+        Ok(left)
+    }
+
+    // Nouvelle fonction pour <, >, <=, >=
+    fn parse_relational(&mut self) -> Result<Value, String> {
+        let mut left = self.parse_additive()?;
+        while let Token::Lt | Token::Gt | Token::LtEq | Token::GtEq = self.peek() {
+             let op = match self.advance() {
                 Token::Lt => "<",
                 Token::Gt => ">",
-                _ => unreachable!()
+                Token::LtEq => "<=",
+                Token::GtEq => ">=",
+                _ => unreachable!(),
             };
             let right = self.parse_additive()?;
             left = json!([op, left, right]);

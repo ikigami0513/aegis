@@ -1,0 +1,14 @@
+var ma_liste = []
+ma_liste.push(10)
+ma_liste.push(20)
+print ma_liste // [10, 20]
+
+var dernier = ma_liste.pop()
+print "J'ai retiré : " + dernier
+print "Il reste : " + ma_liste
+
+var mon_dict = {}
+mon_dict.insert("nom", "Aegis")
+mon_dict.insert("type", "Langage")
+print mon_dict
+print "Clés : " + mon_dict.keys()

@@ -23,8 +23,8 @@ pub enum Value {
     Float(f64),
     String(String),
     Boolean(bool),
-    List(Vec<Value>),
-    Dict(HashMap<String, Value>),
+    List(Rc<RefCell<Vec<Value>>>),
+    Dict(Rc<RefCell<HashMap<String, Value>>>),
     Instance(Rc<RefCell<InstanceData>>),
     Null
 }
@@ -39,7 +39,7 @@ impl fmt::Display for Value {
             Value::Null => write!(f, "null"),
             Value::List(l) => {
                 write!(f, "[")?;
-                for (i, v) in l.iter().enumerate() {
+                for (i, v) in l.borrow().iter().enumerate() {
                     if i > 0 { write!(f, ", ")?; }
                     write!(f, "{}", v)?;
                 }
@@ -47,7 +47,7 @@ impl fmt::Display for Value {
             },
             Value::Dict(d) => {
                 write!(f, "{{")?;
-                for (i, (k, v)) in d.iter().enumerate() {
+                for (i, (k, v)) in d.borrow().iter().enumerate() {
                     if i > 0 { write!(f, ", ")?; }
                     write!(f, "{}: {}", k, v)?;
                 }
@@ -61,17 +61,51 @@ impl fmt::Display for Value {
     }
 }
 
+impl Value {
+    /// Helper pour convertir proprement en i64 (depuis int, float ou string)
+    pub fn as_int(&self) -> Result<i64, String> {
+        match self {
+            Value::Integer(i) => Ok(*i),
+            Value::Float(f) => Ok(*f as i64),
+            Value::String(s) => s.trim().parse::<i64>().map_err(|_| "Impossible de convertir la chaîne en entier".into()),
+            _ => Err(format!("Impossible de convertir {:?} en entier", self))
+        }
+    }
+
+    /// Helper pour récupérer la String interne ou erreur
+    pub fn as_str(&self) -> Result<String, String> {
+        match self {
+            Value::String(s) => Ok(s.clone()),
+            _ => Err(format!("Attendu une chaîne de caractères, obtenu {:?}", self))
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     Literal(Value),
     Variable(String),
-    Add(Box<Expression>, Box<Expression>),
-    Sub(Box<Expression>, Box<Expression>),
-    Mul(Box<Expression>, Box<Expression>),
-    Div(Box<Expression>, Box<Expression>),
+
+    // Arithmétique
+    Add(Box<Expression>, Box<Expression>), // +
+    Sub(Box<Expression>, Box<Expression>), // -
+    Mul(Box<Expression>, Box<Expression>), // *
+    Div(Box<Expression>, Box<Expression>), // /
+
+    // Comparaisons Complètes
+    Equal(Box<Expression>, Box<Expression>),        // ==
+    NotEqual(Box<Expression>, Box<Expression>),     // !=
+    LessThan(Box<Expression>, Box<Expression>),     // <
+    GreaterThan(Box<Expression>, Box<Expression>),  // >
+    LessEqual(Box<Expression>, Box<Expression>),    // <=
+    GreaterEqual(Box<Expression>, Box<Expression>), // >=
+
+    // Logique
+    And(Box<Expression>, Box<Expression>), // &&
+    Or(Box<Expression>, Box<Expression>),  // ||
+    Not(Box<Expression>),                  // !
+
     FunctionCall(String, Vec<Expression>),
-    Equal(Box<Expression>, Box<Expression>),
-    LessThan(Box<Expression>, Box<Expression>),
     New(String, Vec<Expression>), // new Class(args)
     GetAttr(Box<Expression>, String), // obj.attr
     CallMethod(Box<Expression>, String, Vec<Expression>), // obj.method(args)

@@ -1,6 +1,6 @@
 use serde_json::Value as JsonValue;
 use crate::ast::{Instruction, Expression, Value};
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 /// Transforme un bloc JSON (un tableau d'instructions) en Vec<Instruction>
 pub fn parse_block(block_json: &JsonValue) -> Result<Vec<Instruction>, String> {
@@ -33,14 +33,14 @@ fn json_to_value(json: &JsonValue) -> Result<Value, String> {
             for v in arr {
                 list.push(json_to_value(v)?);
             }
-            Ok(Value::List(list))
+            Ok(Value::List(Rc::new(RefCell::new(list))))
         },
         JsonValue::Object(map) => {
             let mut dict = HashMap::new();
             for (k, v) in map {
                 dict.insert(k.clone(), json_to_value(v)?);
             }
-            Ok(Value::Dict(dict))
+            Ok(Value::Dict(Rc::new(RefCell::new(dict))))
         }
     }
 }
@@ -51,18 +51,60 @@ pub fn parse_expression(json_expr: &JsonValue) -> Result<Expression, String> {
     if let Some(array) = json_expr.as_array() {
         if array.is_empty() {
             // Liste vide [] -> Littéral
-            return Ok(Expression::Literal(Value::List(vec![])));
+            return Ok(Expression::Literal(Value::List(Rc::new(RefCell::new(vec![])))));
         }
 
         // On regarde le premier élément pour voir si c'est une commande connue
         if let Some(command) = array[0].as_str() {
             match command {
-                // Variables
-                "get" => {
-                    let name = array.get(1).and_then(|v| v.as_str()).ok_or("Get attend un nom de variable")?;
-                    return Ok(Expression::Variable(name.to_string()));
+                // Logique et Comparaisons
+                "&&" => {
+                    let left = parse_expression(&array[1])?;
+                    let right = parse_expression(&array[2])?;
+                    return Ok(Expression::And(Box::new(left), Box::new(right)));
                 },
-                // Opérateurs Mathématiques
+                "||" => {
+                    let left = parse_expression(&array[1])?;
+                    let right = parse_expression(&array[2])?;
+                    return Ok(Expression::Or(Box::new(left), Box::new(right)));
+                },
+                "!" => {
+                    let expr = parse_expression(&array[1])?;
+                    return Ok(Expression::Not(Box::new(expr)));
+                }
+                "==" => {
+                    let left = parse_expression(&array[1])?;
+                    let right = parse_expression(&array[2])?;
+                    // Tu devras ajouter Equal(Box<Expr>, Box<Expr>) dans ast.rs
+                    return Ok(Expression::Equal(Box::new(left), Box::new(right)));
+                },
+                "!=" => {
+                    let left = parse_expression(&array[1])?;
+                    let right = parse_expression(&array[2])?;
+                    return Ok(Expression::NotEqual(Box::new(left), Box::new(right)));
+                },
+                "<" => {
+                    let left = parse_expression(&array[1])?;
+                    let right = parse_expression(&array[2])?;
+                    return Ok(Expression::LessThan(Box::new(left), Box::new(right)));
+                },
+                ">" => {
+                    let left = parse_expression(&array[1])?;
+                    let right = parse_expression(&array[2])?;
+                    return Ok(Expression::GreaterThan(Box::new(left), Box::new(right)));
+                },
+                "<=" => {
+                    let left = parse_expression(&array[1])?;
+                    let right = parse_expression(&array[2])?;
+                    return Ok(Expression::LessEqual(Box::new(left), Box::new(right)));
+                },
+                ">=" => {
+                    let left = parse_expression(&array[1])?;
+                    let right = parse_expression(&array[2])?;
+                    return Ok(Expression::GreaterEqual(Box::new(left), Box::new(right)));
+                }
+                
+                // Arithmétique
                 "+" => {
                     let left = parse_expression(&array[1])?;
                     let right = parse_expression(&array[2])?;
@@ -83,16 +125,11 @@ pub fn parse_expression(json_expr: &JsonValue) -> Result<Expression, String> {
                     let right = parse_expression(&array[2])?;
                     return Ok(Expression::Div(Box::new(left), Box::new(right)));
                 },
-                "==" => {
-                    let left = parse_expression(&array[1])?;
-                    let right = parse_expression(&array[2])?;
-                    // Tu devras ajouter Equal(Box<Expr>, Box<Expr>) dans ast.rs
-                    return Ok(Expression::Equal(Box::new(left), Box::new(right)));
-                },
-                "<" => {
-                    let left = parse_expression(&array[1])?;
-                    let right = parse_expression(&array[2])?;
-                    return Ok(Expression::LessThan(Box::new(left), Box::new(right)));
+
+                // Variables et Appels
+                "get" => {
+                    let name = array.get(1).and_then(|v| v.as_str()).ok_or("Get attend un nom de variable")?;
+                    return Ok(Expression::Variable(name.to_string()));
                 },
                 // Appel de fonction (Expression)
                 "call" => {
@@ -116,15 +153,11 @@ pub fn parse_expression(json_expr: &JsonValue) -> Result<Expression, String> {
                     }
                     return Ok(Expression::New(class_name, args));
                 },
-                
-                // Gestion de "get_attr" (obj.attr)
                 "get_attr" => {
                     let obj = parse_expression(&array[1])?;
                     let attr = array.get(2).and_then(|v| v.as_str()).ok_or("Attr attend un nom")?.to_string();
                     return Ok(Expression::GetAttr(Box::new(obj), attr));
                 },
-
-                // Gestion de "call_method" (obj.method())
                 "call_method" => {
                     let obj = parse_expression(&array[1])?;
                     let method = array.get(2).and_then(|v| v.as_str()).ok_or("Method attend un nom")?.to_string();
@@ -135,6 +168,8 @@ pub fn parse_expression(json_expr: &JsonValue) -> Result<Expression, String> {
                     }
                     return Ok(Expression::CallMethod(Box::new(obj), method, args));
                 },
+
+                // Listes et Dicts
                 "make_list" => {
                     // ["make_list", expr1, expr2...]
                     let args_json = &array[1..];
@@ -156,6 +191,8 @@ pub fn parse_expression(json_expr: &JsonValue) -> Result<Expression, String> {
                     }
                     return Ok(Expression::Dict(entries));
                 },
+
+                // Fallback pour les appels implicite (ex: ["print", ...])
                 cmd_name => {
                     // Vérification : est-ce que c'est vraiment une fonction ou juste une liste de données ?
                     // Dans notre architecture, tout ce qui commence par une string dans un tableau

@@ -1,0 +1,24 @@
+var a = 2
+var b = 4
+
+if (a < b) {
+    print "ok 1"
+}
+
+if (b > a) {
+    print "ok 2"
+} 
+
+var c = 2
+
+if (a == c) {
+    print "ok 3"
+}
+
+if (a <= b) {
+    print "ok 4"
+}
+
+if (b >= a) {
+    print "ok 5"
+}
