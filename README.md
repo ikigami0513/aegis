@@ -19,7 +19,7 @@ cargo run ./tests/test_full.aeg
 ## 1️⃣ Basic Syntax
 ### Comments
 
-Single-line comments start with //.
+Single-line comments start with `//`.
 
 ```aegis
 // This is a comment
@@ -70,7 +70,7 @@ var res = 10 + 5 * 2 // Result: 20
 
 ## Concatenation (Polymorphism)
 
-The + operator is context-aware. If one of the operands is a string, Aegis automatically converts the other operand to a string to concatenate them.
+The `+` operator is context-aware. If one of the operands is a string, Aegis automatically converts the other operand to a string to concatenate them.
 
 ```aegis
 var age = 25
@@ -109,7 +109,7 @@ while (i < 3) {
 
 Aegis uses a for loop optimized for numerical iterations.
 
-Syntax: for (variable, start, end, step)
+Syntax: `for (variable, start, end, step)`
 
 ```aegis
 // Count from 0 to 10 with a step of 2 (0, 2, 4, 6, 8)
@@ -122,7 +122,7 @@ for (j, 0, 10, 2) {
 
 ## 4️⃣ Functions
 ### Function
-Functions are declared using func. They support arguments, return values, and recursion.
+Functions are declared using `func`. They support arguments, return values, and recursion.
 
 ```aegis
 func square(val) {
@@ -163,7 +163,7 @@ class Animal(name) {
 
 ### Instantiation
 
-Use the new keyword.
+Use the `new` keyword.
 
 ```aegis
 var cat = new Animal("Felix")
@@ -184,9 +184,9 @@ class Dog(name) extends Animal {
 
 ### Member Access (this and .)
 
-Inside a class, use this.variable to access or modify an attribute.
+Inside a class, use `this.variable` to access or modify an attribute.
 
-Outside, use object.variable or object.method().
+Outside, use `object.variable` or `object.method()`.
 
 ```aegis
 var doggo = new Dog("Rex")
@@ -201,7 +201,7 @@ doggo.name = "Brutus"
 
 ## 6️⃣ Lists
 
-Lists are defined using brackets [].
+Lists are defined using brackets `[]`.
 
 ```aegis
 var my_list = [10, 20, 30]
@@ -215,10 +215,10 @@ print my_list
 These functions are native and directly available in the language.
 | Function | Description | Example |
 | :--- | :--- | :--- |
-| len(obj) | Returns the length of a list or string. | len([1,2]) → 2 |
-| to_int(str) | Parses a string into an integer. | to_int("42") → 42 |
-| str(val) | Explicitly converts a value to a string. | str(123) → "123" |
-| at(list, i) | (Internal) Access element at index i. | at(list, 0) |
+| len(obj) | Returns the length of a list or string. | `len([1,2]) → 2` |
+| to_int(str) | Parses a string into an integer. | `to_int("42") → 42` |
+| str(val) | Explicitly converts a value to a string. | `str(123) → "123"` |
+| at(list, i) | (Internal) Access element at index i. | `at(list, 0)` |
 
 ---
 
