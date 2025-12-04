@@ -1,4 +1,4 @@
-### 🛡️ Aegis Language Documentation
+# 🛡️ Aegis Language Documentation
 
 Aegis is a dynamic, object-oriented, interpreted scripting language written in Rust. It features a simple syntax inspired by C and JavaScript, designed to be easy to read and write.
 
