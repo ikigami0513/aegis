@@ -1,242 +1,294 @@
 # 🛡️ Aegis Language Documentation
 
-Aegis is a dynamic, object-oriented, interpreted scripting language written in Rust. It features a simple syntax inspired by C and JavaScript, designed to be easy to read and write.
+Aegis is a modern, dynamic (with gradual typing), object-oriented interpreted scripting language written in Rust. It combines the simplicity of Python/JavaScript with powerful features like first-class functions, pattern matching, and built-in system tools.
 
 ---
 
 ## 🚀 Quick Start
+### Interactive Mode (REPL)
 
-To execute an Aegis script, use Cargo from the project root:
+To start the Aegis shell and type code directly:
+
+```bash
+cargo run
+```
+
+### Run a Script
+
+To execute an Aegis file:
+
 ```bash
 cargo run path/to/script.aeg
 ```
 
-Example:
-```bash
-cargo run ./tests/test_full.aeg
+---
+
+## 1️⃣ Variables & Types
+### Declaration & Types
+
+Variables are declared using var. Aegis supports Gradual Typing: you can specify types for safety, or leave them dynamic.
+
+```
+// Dynamic typing
+var x = 10
+var name = "Aegis"
+
+// Static typing (Gradual)
+var age: int = 25
+var pi: float = 3.14159
+var active: bool = true
 ```
 
-## 1️⃣ Basic Syntax
-### Comments
+### Destructuring
 
-Single-line comments start with `//`.
+You can unpack lists directly into variables.
 
-```aegis
-// This is a comment
-var x = 10 // Comment at the end of a line
+```
+var point = [10, 20]
+var [x, y] = point
+print x // 10
 ```
 
-### Variables
+### String Interpolation & Formatting
 
-Variables are dynamically typed. Use the var keyword to declare them.
+Embed expressions directly into strings using ${...}. You can also specify format precision for floats.
 
-```aegis
-var a = 10         // Integer
-var b = 3.14       // Float
-var name = "Aegis" // String
-var list = [1, 2]  // List
 ```
-
-### Output (Print)
-
-The print instruction evaluates an expression and outputs it to the console, followed by a newline.
-
-```aegis
-print "Hello"
-print 10 + 20
-```
-
-### User Input (Input)
-
-The input instruction displays a prompt message and stores the user's response (as a string) into a variable.
-
-Syntax: input <variable_name> <prompt_message>
-
-```aegis
-input age_str "How old are you? "
-// age_str now contains the user input
+var item = "Apple"
+var price = 1.256
+print "The ${item} costs ${price:.2f} dollars." 
+// Output: "The Apple costs 1.26 dollars."
 ```
 
 ---
 
-## 2️⃣ Operations & Types
-### Arithmetic
+## 2️⃣ Data Structures
+### Lists
 
-Standard operators are supported: `+`, `-`, `*`, `/`. Operator precedence is respected (`*` and `/` before `+` and `-`).
+Ordered collections of items.
 
-```aegis
-var res = 10 + 5 * 2 // Result: 20
+```
+var list = [1, 2, 3]
+list.push(4)
+print list.at(0) // Access element
 ```
 
-## Concatenation (Polymorphism)
+### Dictionaries
 
-The `+` operator is context-aware. If one of the operands is a string, Aegis automatically converts the other operand to a string to concatenate them.
+Key-value pairs. Keys can be strings. Access values via methods or dot notation.
 
-```aegis
-var age = 25
-print "I am " + age + " years old." // Output: "I am 25 years old."
 ```
-
----
-
-## 3️⃣ Control Structures
-### Conditionals (If / Else)
-
-Parentheses are mandatory around the condition.
-
-```aegis
-var x = 50
-if (x > 100) {
-    print "High"
-} else {
-    print "Low"
+var user = {
+    nom: "Alice",
+    role: "Admin"
 }
+
+// Access
+print user.get("nom") // Method style
+print user.role       // Property style (Syntactic sugar)
 ```
 
-### While Loop
+---
 
-Executes a block as long as the condition is true.
+## 3️⃣ Operators
+### Arithmetic & Assignment
 
-```aegis
+Standard: `+`, `-`, `*`, `/`, `%`. Shorthands: `+=`, `-=`, `*=`, `/=`, `++`, `--`.
+
+```
 var i = 0
-while (i < 3) {
-    print "Iteration " + i
-    i = i + 1
+i++       // i is 1
+i += 10   // i is 11
+```
+
+### Bitwise Operators
+
+Low-level bit manipulation. `&` (AND), `|` (OR), `^` (XOR), `<<` (Left Shift), `>>` (Right Shift).
+
+```
+var a = 12 // 1100
+var b = 5  // 0101
+print a & b // 4 (0100)
+```
+
+---
+
+## 4️⃣ Control Structures
+### Conditionals
+
+Standard `if`, `else`. Parentheses are required.
+
+```
+if (x > 10) { ... } else { ... }
+```
+
+### Loops
+
+- While: `while (condition) { ... }`
+
+- For Range: `for (var_name, start, end, step) { ... }`
+
+### Switch / Case
+
+Clean control flow with implicit break.
+
+```
+switch (val) {
+    case 1:
+        print "One"
+    case 2:
+        print "Two"
+    default:
+        print "Other"
 }
 ```
 
-### For Loop (Range)
+### Error Handling (Try / Catch)
 
-Aegis uses a for loop optimized for numerical iterations.
+Safely handle runtime errors.
 
-Syntax: `for (variable, start, end, step)`
-
-```aegis
-// Count from 0 to 10 with a step of 2 (0, 2, 4, 6, 8)
-for (j, 0, 10, 2) {
-    print "j = " + j
+```
+try {
+    var res = 10 / 0
+} catch (e) {
+    print "Error caught: " + e
 }
 ```
 
 ---
 
-## 4️⃣ Functions
-### Function
-Functions are declared using `func`. They support arguments, return values, and recursion.
+## 5️⃣ Functions & Lambdas
+### Named Functions (Typed)
 
-```aegis
-func square(val) {
-    return val * val
+You can optionally type arguments and return values.
+
+```
+func add(a: int, b: int) -> int {
+    return a + b
 }
-
-print square(5) // Output: 25
 ```
 
-### Recursion
+### Anonymous Functions (Lambdas)
 
-Example with the Fibonacci sequence:
+Functions are first-class citizens. They can be stored in variables and passed as arguments.
 
-```aegis
-func fib(n) {
-    if (n < 2) { return n }
-    return fib(n - 1) + fib(n - 2)
+```
+var greet = func(name) {
+    print "Hello " + name
 }
+greet("World")
+```
+
+### Decorators
+
+Wrap functions with logic using @.
+
+```
+@log
+func compute(x) { return x * x }
 ```
 
 ---
 
-## 5️⃣ Object-Oriented Programming (OOP)
+## 6️⃣ Functional Programming
 
-Aegis supports classes, inheritance, and encapsulation via instances.
+Lists support functional methods using lambdas.
 
-### Class Definition
+- map: Transform elements.
 
-The constructor is implicit: class parameters define the instance attributes directly.
+- filter: Select elements.
 
-```aegis
-class Animal(name) {
-    speak() {
-        print this.name + " makes a noise."
+- for_each: Iterate over elements.
+
+```
+var nums = [1, 2, 3, 4]
+
+// Square numbers > 2
+var res = nums.filter(func(n) { return n > 2 })
+              .map(func(n) { return n * n })
+
+print res // [9, 16]
+```
+
+## 7️⃣ Object-Oriented Programming
+### Classes & Namespaces
+
+Classes define objects. Namespaces organize code.
+
+```
+namespace Game {
+    class Player(name) {
+        hello() { print "Hi, I am " + this.name }
     }
 }
+
+var p = new Game.Player("Mario")
+p.hello()
 ```
 
-### Instantiation
+### Inheritance
 
-Use the `new` keyword.
+Use extends to inherit methods.
 
-```aegis
-var cat = new Animal("Felix")
 ```
-
-### Inheritance (extends)
-
-A class can inherit methods and attributes from another class.
-
-```aegis
-class Dog(name) extends Animal {
-    // Override or new method
-    speak() {
-        print this.name + " barks!"
-    }
-}
-```
-
-### Member Access (this and .)
-
-Inside a class, use `this.variable` to access or modify an attribute.
-
-Outside, use `object.variable` or `object.method()`.
-
-```aegis
-var doggo = new Dog("Rex")
-doggo.speak()        // Method call
-print doggo.name     // Direct attribute access
-
-// Attribute modification
-doggo.name = "Brutus"
+class Dog(n) extends Animal { ... }
 ```
 
 ---
 
-## 6️⃣ Lists
+## 8️⃣ Standard Library (Modules)
 
-Lists are defined using brackets `[]`.
+Aegis comes with a powerful standard library organized in Namespaces.
 
-```aegis
-var my_list = [10, 20, 30]
-print my_list
-```
+`Math`
+| Function | Description |
+| :--- | :--- |
+| Math.PI | Constant (3.14159...) |
+| Math.abs(n) | Absolute value |
+| Math.pow(b, e) | Power |
+| Math.sqrt(n) | Square root |
+| Math.max(a, b) | Maximum |
+| Math.Vector2(x,y) | Class for 2D vectors |
+
+`File (I/O)`
+| Function | Description |
+| :--- | :--- |
+| File.read(path) | Returns file content as string or null. |
+| File.write(path, str) | Writes (overwrites) to a file. |
+| File.append(path, str) | Appends text to end of file. |
+| File.exists(path) | Returns true if file exists. |
+| File.delete(path) | Deletes a file. |
+
+`System`
+| Function | Description |
+| :--- | :--- |
+| System.clear() | Clears the console screen. |
+
+`Time`
+| Function | Description |
+| :--- | :--- |
+| Time.now() | Returns current timestamp (ms). |
+| Time.sleep(ms) | Pauses execution. |
+| Time.elapsed(start) | Returns elapsed ms since start. |
+
+`Random`
+| Function | Description |
+| :--- | :--- |
+| Random.int(min, max) | Random integer `[min, max[`. |
+| Random.float() | Random float `0.0 - 1.0`. |
 
 ---
 
-## 7️⃣ Standard Library (Built-ins)
+## 9️⃣ Global Built-ins
 
-These functions are native and directly available in the language.
-| Function | Description | Example |
-| :--- | :--- | :--- |
-| len(obj) | Returns the length of a list or string. | `len([1,2]) → 2` |
-| to_int(str) | Parses a string into an integer. | `to_int("42") → 42` |
-| str(val) | Explicitly converts a value to a string. | `str(123) → "123"` |
-| at(list, i) | (Internal) Access element at index i. | `at(list, 0)` |
+- `print expr`: Outputs to console.
 
----
+- `input var prompt`: Reads user input.
 
-## 8️⃣ Script Examples
-### Factorial (Recursive)
+- `len(obj)`: Length of list/string/dict.
 
-```aegis
-func fact(n) {
-    if (n < 2) { return 1 }
-    return n * fact(n - 1)
-}
-print fact(5) // 120
-```
+- `str(obj)`: Convert to string.
 
-### Birth Year Calculation
+- `to_int(str)`: Convert to integer.
 
-```aegis
-input age_str "How old are you? "
-var year = 2025 - to_int(age_str)
-print "You were born in: " + year
-```
+- `import "file.aeg"`: Loads external script.
