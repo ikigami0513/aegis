@@ -1,0 +1,20 @@
+print "--- TEST DESTRUCTURATION ---"
+
+var point = [10, 20, 30]
+print "Source : " + point
+
+// La magie opère ici
+var [x, y, z] = point
+
+print "Extraction :"
+print "x = " + x
+print "y = " + y
+print "z = " + z
+
+// Test avec une fonction qui retourne une liste
+func get_coords() -> list {
+    return [5, 5]
+}
+
+var [a, b] = get_coords()
+print "Depuis fonction : " + a + ", " + b

@@ -206,16 +206,70 @@ impl Parser {
     }
 
     fn parse_var(&mut self) -> Result<Value, String> {
-        self.advance(); // Eat 'var'
+        self.advance(); // Mange 'var'
+
+        // --- CAS 1 : Déstructuration de Liste : var [x, y] = ... ---
+        if self.match_token(Token::LBracket) {
+            let mut vars = Vec::new();
+            
+            // 1. Lire la liste des variables cibles [a, b, c]
+            if !self.check(&Token::RBracket) {
+                loop {
+                    if let Token::Identifier(n) = self.advance() {
+                        vars.push(n.clone());
+                    } else {
+                        return Err("Expect variable name in destructuring".into());
+                    }
+                    if !self.match_token(Token::Comma) { break; }
+                }
+            }
+            self.consume(Token::RBracket, "Expect ']' after var list")?;
+            self.consume(Token::Eq, "Expect '=' after destructuring list")?;
+            
+            // 2. Lire l'expression source (la liste à déballer)
+            let expr = self.parse_expression()?;
+            
+            // 3. Génération du code (Desugaring)
+            let mut instructions = Vec::new();
+            
+            // On utilise un nom unique pour stocker la liste temporairement
+            // (pour éviter d'évaluer l'expression plusieurs fois)
+            let temp_name = format!("__destruct_temp_{}", vars.len()); 
+            
+            // Instruction A: var __temp = expr
+            instructions.push(json!(["set", temp_name, null, expr]));
+            
+            // Instruction B...N: var x = __temp.at(0), var y = __temp.at(1)...
+            for (i, var_name) in vars.iter().enumerate() {
+                // Construction de l'appel : __temp.at(i)
+                let access = json!([
+                    "call_method", 
+                    ["get", temp_name], 
+                    "at", 
+                    [json!(i as i64)]
+                ]);
+                
+                // Instruction: set var_name = __temp.at(i)
+                instructions.push(json!(["set", var_name, null, access]));
+            }
+            
+            // ASTUCE : On retourne un bloc "if (true)" contenant nos instructions
+            // Cela permet de retourner une seule "Value" au parser principal
+            // tout en exécutant plusieurs lignes.
+            return Ok(json!(["if", json!(true), instructions]));
+        }
+
+        // --- CAS 2 : Variable Classique : var x: type = ... ---
         let name = if let Token::Identifier(n) = self.advance() { n.clone() } else { return Err("Expect var name".into()); };
         
-        let type_annot = self.parse_type_annotation()?;
+        let type_annot = self.parse_type_annotation()?; 
 
         let expr = if self.match_token(Token::Eq) {
             self.parse_expression()?
         } else {
             json!(null)
         };
+        
         Ok(json!(["set", name, type_annot, expr]))
     }
 
