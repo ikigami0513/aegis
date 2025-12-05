@@ -18,7 +18,8 @@ pub enum Token {
     SlashEq,  // /=
     PlusPlus, // ++
     MinusMinus, // --
-    Namespace
+    Namespace,
+    BitAnd, BitOr, BitXor, ShiftLeft, ShiftRight,
 }
 
 pub struct Lexer<'a> {
@@ -101,23 +102,55 @@ impl<'a> Lexer<'a> {
                 }
                 '<' => {
                     self.chars.next();
-                    if let Some(&'=') = self.chars.peek() { self.chars.next(); tokens.push(Token::LtEq); } 
-                    else { tokens.push(Token::Lt); }
+                    if let Some(&'=') = self.chars.peek() { 
+                        self.chars.next(); 
+                        tokens.push(Token::LtEq); 
+                    }
+                    else if let Some(&'<') = self.chars.peek() { // <<
+                        self.chars.next();
+                        tokens.push(Token::ShiftLeft);
+                    }
+                    else { 
+                        tokens.push(Token::Lt); 
+                    }
                 }
                 '>' => {
                     self.chars.next();
-                    if let Some(&'=') = self.chars.peek() { self.chars.next(); tokens.push(Token::GtEq); } 
-                    else { tokens.push(Token::Gt); }
+                    if let Some(&'=') = self.chars.peek() { 
+                        self.chars.next(); 
+                        tokens.push(Token::GtEq); 
+                    }
+                    else if let Some(&'>') = self.chars.peek() { // >>
+                        self.chars.next();
+                        tokens.push(Token::ShiftRight);
+                    }
+                    else { 
+                        tokens.push(Token::Gt); 
+                    }
                 },
                 '&' => {
                     self.chars.next();
-                    if let Some(&'&') = self.chars.peek() { self.chars.next(); tokens.push(Token::And); }
-                    else { panic!("Unsupported char '&' (use '&&')"); }
+                    if let Some(&'&') = self.chars.peek() { 
+                        self.chars.next(); 
+                        tokens.push(Token::And); 
+                    }
+                    else {
+                        tokens.push(Token::BitAnd);
+                    }
                 },
                 '|' => {
                     self.chars.next();
-                    if let Some(&'|') = self.chars.peek() { self.chars.next(); tokens.push(Token::Or); }
-                    else { panic!("Unsupported char '|' (use '||')"); }
+                    if let Some(&'|') = self.chars.peek() { 
+                        self.chars.next(); 
+                        tokens.push(Token::Or); 
+                    }
+                    else {
+                        tokens.push(Token::BitOr);
+                    }
+                },
+                '^' => {
+                    self.chars.next();
+                    tokens.push(Token::BitXor);
                 },
                 '!' => {
                     self.chars.next();

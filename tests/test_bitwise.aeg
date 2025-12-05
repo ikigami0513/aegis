@@ -1,0 +1,21 @@
+print "--- TEST BITWISE ---"
+
+var a = 12 // 1100 en binaire
+var b = 5  // 0101 en binaire
+
+print "A = " + a
+print "B = " + b
+
+print "AND (a & b) : " + (a & b)   // 0100 -> 4
+print "OR  (a | b) : " + (a | b)   // 1101 -> 13
+print "XOR (a ^ b) : " + (a ^ b)   // 1001 -> 9
+
+print "Shift Left  (a << 1) : " + (a << 1) // 11000 -> 24
+print "Shift Right (a >> 1) : " + (a >> 1) // 0110 -> 6
+
+// Astuce : Vérifier si un nombre est pair avec &
+// x & 1 renvoie 0 si pair, 1 si impair
+var x = 42
+if ((x & 1) == 0) {
+    print "42 est pair (verifie avec bitwise)"
+}

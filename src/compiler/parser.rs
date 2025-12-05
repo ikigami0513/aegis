@@ -486,7 +486,7 @@ impl Parser {
 
     // Nouvelle fonction pour <, >, <=, >=
     fn parse_relational(&mut self) -> Result<Value, String> {
-        let mut left = self.parse_additive()?;
+        let mut left = self.parse_bitwise()?;
         while let Token::Lt | Token::Gt | Token::LtEq | Token::GtEq = self.peek() {
              let op = match self.advance() {
                 Token::Lt => "<",
@@ -494,6 +494,24 @@ impl Parser {
                 Token::LtEq => "<=",
                 Token::GtEq => ">=",
                 _ => unreachable!(),
+            };
+            let right = self.parse_bitwise()?;
+            left = json!([op, left, right]);
+        }
+        Ok(left)
+    }
+
+    fn parse_bitwise(&mut self) -> Result<Value, String> {
+        let mut left = self.parse_additive()?;
+        
+        while let Token::BitAnd | Token::BitOr | Token::BitXor | Token::ShiftLeft | Token::ShiftRight = self.peek() {
+            let op = match self.advance() {
+                Token::BitAnd => "&",
+                Token::BitOr => "|",
+                Token::BitXor => "^",
+                Token::ShiftLeft => "<<",
+                Token::ShiftRight => ">>",
+                _ => unreachable!()
             };
             let right = self.parse_additive()?;
             left = json!([op, left, right]);

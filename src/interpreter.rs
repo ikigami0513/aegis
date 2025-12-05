@@ -122,6 +122,11 @@ pub fn evaluate(expr: &Expression, env: SharedEnv) -> Result<Value, String> {
                 Ok(Value::Boolean(is_truthy(&r_val)))
             }
         },
+        Expression::BitAnd(l, r) => Ok(Value::Integer(evaluate(l, env.clone())?.as_int()? & evaluate(r, env.clone())?.as_int()?)),
+        Expression::BitOr(l, r) => Ok(Value::Integer(evaluate(l, env.clone())?.as_int()? | evaluate(r, env.clone())?.as_int()?)),
+        Expression::BitXor(l, r) => Ok(Value::Integer(evaluate(l, env.clone())?.as_int()? ^ evaluate(r, env.clone())?.as_int()?)),
+        Expression::ShiftLeft(l, r) => Ok(Value::Integer(evaluate(l, env.clone())?.as_int()? << evaluate(r, env.clone())?.as_int()?)),
+        Expression::ShiftRight(l, r) => Ok(Value::Integer(evaluate(l, env.clone())?.as_int()? >> evaluate(r, env.clone())?.as_int()?)),
 
         // --- COMPARAISONS (MISE À JOUR) ---
         Expression::Equal(left, right) => Ok(Value::Boolean(evaluate(left, env.clone())? == evaluate(right, env)?)),

@@ -58,6 +58,31 @@ pub fn parse_expression(json_expr: &JsonValue) -> Result<Expression, String> {
         if let Some(command) = array[0].as_str() {
             match command {
                 // Logique et Comparaisons
+                "&" => {
+                    let left = parse_expression(&array[1])?;
+                    let right = parse_expression(&array[2])?;
+                    return Ok(Expression::BitAnd(Box::new(left), Box::new(right)));
+                }
+                "|" => {
+                    let left = parse_expression(&array[1])?;
+                    let right = parse_expression(&array[2])?;
+                    return Ok(Expression::BitOr(Box::new(left), Box::new(right)));
+                }
+                "^" => {
+                    let left = parse_expression(&array[1])?;
+                    let right = parse_expression(&array[2])?;
+                    return Ok(Expression::BitXor(Box::new(left), Box::new(right)));
+                }
+                "<<" => {
+                    let left = parse_expression(&array[1])?;
+                    let right = parse_expression(&array[2])?;
+                    return Ok(Expression::ShiftLeft(Box::new(left), Box::new(right)));
+                }
+                ">>" => {
+                    let left = parse_expression(&array[1])?;
+                    let right = parse_expression(&array[2])?;
+                    return Ok(Expression::ShiftRight(Box::new(left), Box::new(right)));
+                }
                 "&&" => {
                     let left = parse_expression(&array[1])?;
                     let right = parse_expression(&array[2])?;

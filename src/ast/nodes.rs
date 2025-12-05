@@ -37,6 +37,11 @@ pub enum Expression {
     And(Box<Expression>, Box<Expression>),
     Or(Box<Expression>, Box<Expression>),
     Not(Box<Expression>),
+    BitAnd(Box<Expression>, Box<Expression>),
+    BitOr(Box<Expression>, Box<Expression>),
+    BitXor(Box<Expression>, Box<Expression>),
+    ShiftLeft(Box<Expression>, Box<Expression>),
+    ShiftRight(Box<Expression>, Box<Expression>),
 
     // Structures & Calls
     Call(Box<Expression>, Vec<Expression>),
