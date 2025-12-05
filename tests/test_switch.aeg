@@ -1,0 +1,31 @@
+print "--- TEST SWITCH CASE ---"
+
+// Test avec Entiers
+var note = 15
+print "Note : " + note
+
+switch (note) {
+    case 20:
+        print "Parfait !"
+    case 15:
+        print "Tres bien"
+        print "(Bravo)"
+    case 10:
+        print "Juste la moyenne"
+    default:
+        print "Autre note"
+}
+
+// Test avec String et Default
+var fruit = "Tomate"
+print ""
+print "Fruit : " + fruit
+
+switch (fruit) {
+    case "Pomme":
+        print "C'est vert ou rouge"
+    case "Banane":
+        print "C'est jaune"
+    default:
+        print "Je ne connais pas ce fruit..."
+}

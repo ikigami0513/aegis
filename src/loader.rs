@@ -380,6 +380,28 @@ pub fn parse_instruction(json_instr: &JsonValue) -> Result<Instruction, String> 
                 catch_body 
             })
         },
+        "switch" => {
+            // ["switch", value, cases_array, default_body]
+            let value = parse_expression(&array[1])?;
+            
+            let cases_json = array[2].as_array().ok_or("Cases must be array")?;
+            let mut cases = Vec::new();
+            
+            for c in cases_json {
+                let c_arr = c.as_array().unwrap();
+                let c_val = parse_expression(&c_arr[0])?;
+                let c_body = parse_block(&c_arr[1])?;
+                cases.push((c_val, c_body));
+            }
+            
+            let default_body = parse_block(&array[3])?;
+            
+            Ok(Instruction::Switch { 
+                value, 
+                cases, 
+                default: default_body 
+            })
+        },
         _ => Err(format!("Instruction inconnue: {}", command)),
     }
 }

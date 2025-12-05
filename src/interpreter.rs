@@ -313,7 +313,7 @@ pub fn evaluate(expr: &Expression, env: SharedEnv) -> Result<Value, String> {
                 },
                 // ------------------------
 
-                // --- TIME & RANDOM ---
+                // --- TIME ---
                 "time_now" => {
                     let start = SystemTime::now();
                     let since_the_epoch = start
@@ -322,6 +322,9 @@ pub fn evaluate(expr: &Expression, env: SharedEnv) -> Result<Value, String> {
                     // On retourne des millisecondes pour être pratique
                     return Ok(Value::Integer(since_the_epoch.as_millis() as i64));
                 },
+                // ------------------------
+
+                // --- RANDOM ---
                 "rand_int" => {
                     if resolved.len() != 2 { return Err("rand_int attend 2 arguments (min, max)".into()); }
                     let min = resolved[0].as_int()?;
@@ -338,6 +341,7 @@ pub fn evaluate(expr: &Expression, env: SharedEnv) -> Result<Value, String> {
                     let val: f64 = rng.r#gen(); // 0.0 .. 1.0
                     return Ok(Value::Float(val));
                 },
+                // ------------------------
 
                  _ => {}
              }
@@ -564,6 +568,38 @@ pub fn execute(instr: &Instruction, env: SharedEnv) -> Result<Option<Value>, Str
                 
                 for instr in catch_body {
                     if let Some(ret) = execute(instr, catch_env.clone())? {
+                        return Ok(Some(ret));
+                    }
+                }
+            }
+            
+            Ok(None)
+        },
+        Instruction::Switch { value, cases, default } => {
+            let val_to_match = evaluate(value, env.clone())?;
+            let mut match_found = false;
+
+            for (case_expr, case_body) in cases {
+                let case_val = evaluate(case_expr, env.clone())?;
+                
+                // On compare les valeurs
+                if val_to_match == case_val {
+                    match_found = true;
+                    // Exécuter le corps du case
+                    // Note: On pourrait créer un scope enfant ici si on voulait isoler les variables
+                    for instr in case_body {
+                         if let Some(ret) = execute(instr, env.clone())? {
+                            return Ok(Some(ret));
+                        }
+                    }
+                    // Implicit break: on sort du switch dès qu'un cas est trouvé
+                    break; 
+                }
+            }
+
+            if !match_found {
+                for instr in default {
+                    if let Some(ret) = execute(instr, env.clone())? {
                         return Ok(Some(ret));
                     }
                 }

@@ -79,4 +79,9 @@ pub enum Instruction {
         error_var: String,
         catch_body: Vec<Instruction>,
     },
+    Switch {
+        value: Expression,
+        cases: Vec<(Expression, Vec<Instruction>)>, 
+        default: Vec<Instruction>,
+    },
 }

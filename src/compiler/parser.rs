@@ -86,6 +86,7 @@ impl Parser {
             Token::Break => { self.advance(); Ok(json!(["break"])) },
             Token::Import => self.parse_import(),
             Token::Try => self.parse_try(),
+            Token::Switch => self.parse_switch(),
             
             // Cas générique pour Identifiants (Variables, Appels, Attributs)
             Token::Identifier(_) => {
@@ -195,6 +196,49 @@ impl Parser {
         
         // Format JSON: ["try", [try_body], "err_var_name", [catch_body]]
         Ok(json!(["try", try_body, error_var, catch_body]))
+    }
+
+    fn parse_switch(&mut self) -> Result<Value, String> {
+        self.advance(); // Eat 'switch'
+        self.consume(Token::LParen, "Expect '(' after switch")?;
+        let value = self.parse_expression()?;
+        self.consume(Token::RParen, "Expect ')' after value")?;
+        self.consume(Token::LBrace, "Expect '{' to start switch block")?;
+
+        let mut cases = Vec::new();
+        let mut default_body = Vec::new();
+
+        while !self.check(&Token::RBrace) && !self.is_at_end() {
+            if self.match_token(Token::Case) {
+                // Case definition: case expr:
+                let case_val = self.parse_expression()?;
+                self.consume(Token::Colon, "Expect ':' after case value")?;
+                
+                // Read instructions until the next 'case', 'default', or '}'
+                let mut body = Vec::new();
+                while !self.check(&Token::Case) && !self.check(&Token::Default) && !self.check(&Token::RBrace) {
+                    body.push(self.parse_statement()?);
+                }
+                
+                // Add to cases list
+                // Format: [case_val, [instructions]]
+                cases.push(json!([case_val, body]));
+
+            } else if self.match_token(Token::Default) {
+                self.consume(Token::Colon, "Expect ':' after default")?;
+                
+                while !self.check(&Token::Case) && !self.check(&Token::Default) && !self.check(&Token::RBrace) {
+                    default_body.push(self.parse_statement()?);
+                }
+            } else {
+                return Err(format!("Unexpected token inside switch: {:?}", self.peek()));
+            }
+        }
+
+        self.consume(Token::RBrace, "Expect '}' to end switch block")?;
+
+        // JSON AST: ["switch", value_expr, [[case1_val, body], ...], [default_body]]
+        Ok(json!(["switch", value, cases, default_body]))
     }
 
     fn parse_if(&mut self) -> Result<Value, String> {
