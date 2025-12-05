@@ -336,17 +336,47 @@ pub fn parse_instruction(json_instr: &JsonValue) -> Result<Instruction, String> 
         "function" => {
             let name = array[1].as_str().unwrap().to_string();
             
+            // Params est un tableau. Ses éléments peuvent être :
+            // 1. Une string simple "x" (Ancien format ou parser simplifié)
+            // 2. Un tableau ["x", "int"] (Nouveau format typé)
+            // 3. Un tableau ["x", null] (Nouveau format non typé)
+            
             let params_json = array[2].as_array().unwrap();
             let mut params = Vec::new();
+            
             for p in params_json {
-                // Ici on attend le format tableau : ["nom", "type" ou null]
-                let pair = p.as_array().unwrap();
-                let p_name = pair[0].as_str().unwrap().to_string();
-                let p_type = pair[1].as_str().map(|s| s.to_string());
-                params.push((p_name, p_type));
+                if let Some(p_str) = p.as_str() {
+                    // Cas 1 : Juste une string (ex: "x") -> Type None
+                    params.push((p_str.to_string(), None));
+                } else if let Some(pair) = p.as_array() {
+                    // Cas 2 & 3 : Tableau [nom, type]
+                    if pair.len() >= 1 {
+                        let p_name = pair[0].as_str().unwrap().to_string();
+                        
+                        let p_type = if pair.len() > 1 {
+                            pair[1].as_str().map(|s| s.to_string())
+                        } else {
+                            None
+                        };
+                        
+                        params.push((p_name, p_type));
+                    }
+                }
             }
 
-            let ret_type = array[3].as_str().map(|s| s.to_string());
+            // Index 3 pour le type de retour (peut être null ou absent si vieux JSON)
+            let ret_type = if array.len() > 3 {
+                array[3].as_str().map(|s| s.to_string())
+            } else {
+                None
+            };
+
+            // Index 4 pour le body
+            // Attention : Si ret_type était absent dans l'ancien format, body était à l'index 3 ?
+            // Il vaut mieux se fier à ton Parser actuel.
+            // Ton parser actuel génère TOUJOURS 5 éléments : ["function", name, params, ret_type, body]
+            // Donc array[4] est correct SI le parser est utilisé.
+            
             let body = parse_block(&array[4])?;
             
             Ok(Instruction::Function { name, params, ret_type, body })
@@ -363,31 +393,47 @@ pub fn parse_instruction(json_instr: &JsonValue) -> Result<Instruction, String> 
             Ok(Instruction::Input(var_name, prompt))
         },
         "class" => {
-            // ["class", "Name", [params], {methods}, "Parent"?]
-            let name = array[1].as_str().ok_or("Nom classe")?.to_string();
+            let name = array[1].as_str().unwrap().to_string();
             
-            // Params
-            let params_arr = array[2].as_array().ok_or("Params array")?;
-            let params: Vec<String> = params_arr.iter().map(|v| v.as_str().unwrap().to_string()).collect();
-            
-            // Methods: Un objet JSON où chaque clé est le nom, et la valeur est [params, body]
-            let methods_map = array[3].as_object().ok_or("Methods object")?;
-            let mut methods = HashMap::new();
-            
-            for (m_name, m_data) in methods_map {
-                let m_arr = m_data.as_array().ok_or("Method data array")?;
-                let m_params: Vec<String> = m_arr[0].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_string()).collect();
-                let m_body = parse_block(&m_arr[1])?;
-                methods.insert(m_name.clone(), (m_params, m_body));
+            // Params constructeur
+            let params_json = array[2].as_array().unwrap();
+            let mut params = Vec::new();
+            for p in params_json {
+                // Gestion robuste comme pour Function
+                if let Some(s) = p.as_str() {
+                    params.push((s.to_string(), None));
+                } else if let Some(pair) = p.as_array() {
+                    let n = pair[0].as_str().unwrap().to_string();
+                    let t = pair[1].as_str().map(|s| s.to_string());
+                    params.push((n, t));
+                }
             }
             
-            // Parent (Optionnel)
-            let parent = if array.len() > 4 {
-                array[4].as_str().map(|s| s.to_string())
-            } else {
-                None
-            };
-
+            // Methods
+            let methods_map = array[3].as_object().unwrap();
+            let mut methods = HashMap::new();
+            
+            for (k, v) in methods_map {
+                let m_arr = v.as_array().unwrap();
+                
+                // Params méthode
+                let m_params_json = m_arr[0].as_array().unwrap();
+                let mut m_params = Vec::new();
+                for p in m_params_json {
+                    if let Some(s) = p.as_str() {
+                        m_params.push((s.to_string(), None));
+                    } else if let Some(pair) = p.as_array() {
+                        let n = pair[0].as_str().unwrap().to_string();
+                        let t = pair[1].as_str().map(|s| s.to_string());
+                        m_params.push((n, t));
+                    }
+                }
+                
+                let m_body = parse_block(&m_arr[1])?;
+                methods.insert(k.clone(), (m_params, m_body));
+            }
+            
+            let parent = if array.len() > 4 { array[4].as_str().map(|s| s.to_string()) } else { None };
             Ok(Instruction::Class(crate::ast::ClassDefinition { name, parent, params, methods }))
         },
         

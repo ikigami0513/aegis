@@ -156,8 +156,8 @@ pub fn evaluate(expr: &Expression, env: SharedEnv) -> Result<Value, String> {
             
             // 4. Instanciation
             let mut fields = HashMap::new();
-            for (p, v) in cls_def.params.iter().zip(resolved) { 
-                fields.insert(p.clone(), v); 
+            for ((p_name, _), v) in cls_def.params.iter().zip(resolved) { 
+                fields.insert(p_name.clone(), v); 
             }
             
             Ok(Value::Instance(Rc::new(RefCell::new(crate::ast::InstanceData { 
@@ -355,7 +355,12 @@ pub fn evaluate(expr: &Expression, env: SharedEnv) -> Result<Value, String> {
                      if let Some((params, body)) = def.methods.get(method) {
                          let child = Environment::new_child(env.clone());
                          child.borrow_mut().set_variable("this".into(), Value::Instance(inst.clone()));
-                         for (p, v) in params.iter().zip(resolved) { child.borrow_mut().set_variable(p.clone(), v); }
+                         
+                         // DEVIENT :
+                         for ((p_name, _), v) in params.iter().zip(resolved) { 
+                             child.borrow_mut().set_variable(p_name.clone(), v); 
+                         }
+                         
                          for i in body { if let Some(r) = execute(&i, child.clone())? { return Ok(r); } }
                          return Ok(Value::Null);
                      }

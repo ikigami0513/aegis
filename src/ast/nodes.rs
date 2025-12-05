@@ -5,8 +5,8 @@ use std::collections::HashMap;
 pub struct ClassDefinition {
     pub name: String,
     pub parent: Option<String>,
-    pub params: Vec<String>,
-    pub methods: HashMap<String, (Vec<String>, Vec<Instruction>)>
+    pub params: Vec<(String, Option<String>)>,
+    pub methods: HashMap<String, (Vec<(String, Option<String>)>, Vec<Instruction>)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
