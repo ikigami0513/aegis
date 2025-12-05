@@ -530,6 +530,32 @@ pub fn evaluate(expr: &Expression, env: SharedEnv) -> Result<Value, String> {
                                     Err(_) => Ok(Value::Null) // Retourne null si non trouvée
                                 }
                             },
+
+                            "sys_args" => {
+                                // On récupère tous les arguments
+                                let all_args: Vec<String> = std::env::args().collect();
+                                
+                                // On cherche à partir d'où commencent les arguments du script
+                                // Généralement, c'est après le nom du script .aeg
+                                let mut script_args = Vec::new();
+                                let mut found_script = false;
+                                
+                                for arg in all_args {
+                                    if found_script {
+                                        script_args.push(Value::String(arg));
+                                    } else if arg.ends_with(".aeg") {
+                                        found_script = true;
+                                    }
+                                }
+                                
+                                // Si on est en mode REPL (pas de .aeg), on renvoie tout sauf l'exécutable
+                                if !found_script && std::env::args().len() > 1 {
+                                     // Fallback simple
+                                     script_args = std::env::args().skip(1).map(Value::String).collect();
+                                }
+
+                                Ok(Value::List(Rc::new(RefCell::new(script_args))))
+                            },
                             // ------------------------
 
                             // --- Json ---

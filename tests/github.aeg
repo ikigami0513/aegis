@@ -1,0 +1,37 @@
+import "stdlib/http.aeg"
+import "stdlib/json.aeg"
+import "stdlib/system.aeg"
+
+print "--- GITHUB USER TOOL ---"
+
+// 1. Récupération des arguments
+var args = System.args()
+
+if (len(args) == 0) {
+    print "Usage: aegis github.aeg <username>"
+    // On pourrait ajouter un System.exit(1) ici si on l'avait !
+} else {
+    var username = args.at(0)
+    print "Recherche de l'utilisateur : ${username}..."
+    
+    try {
+        var url = "https://api.github.com/users/${username}"
+        var json = Http.get(url)
+        var user = Json.parse(json)
+        
+        // GitHub renvoie un champ "message" en cas d'erreur
+        if (user.get("message") == "Not Found") {
+            print "❌ Utilisateur introuvable."
+        } else {
+            print ""
+            print "=== 👤 PROFIL ==="
+            print "Nom    : " + user.get("name")
+            print "Bio    : " + user.get("bio")
+            print "Repos  : " + user.get("public_repos")
+            print "Lien   : " + user.get("html_url")
+            print "================="
+        }
+    } catch (e) {
+        print "Erreur API : " + e
+    }
+}

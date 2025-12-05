@@ -6,4 +6,8 @@ namespace System {
     func env(key) {
         return sys_env(key)
     }
+
+    func args() {
+        return sys_args()
+    }
 }
