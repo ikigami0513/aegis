@@ -1,0 +1,20 @@
+import "stdlib/system.aeg"
+
+var __AEGIS_TESTS = []
+
+func test(f) {
+    __AEGIS_TESTS.push(f)
+    return f
+}
+
+func assert(condition, message) {
+    if (!condition) {
+        System.fail(message)
+    }
+}
+
+func assert_eq(a, b, message) {
+    if (a != b) {
+        System.fail(message + " (Attendu: " + b + ", Reçu: " + a + ")")
+    }
+}

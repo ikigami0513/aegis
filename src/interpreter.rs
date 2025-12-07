@@ -724,7 +724,7 @@ fn execute_internal(instr: &Instruction, env: SharedEnv) -> Result<Option<Value>
 }
 
 /// Helper pour exécuter une fonction Aegis (Lambda ou Nommée) depuis Rust
-fn apply_func(func_val: Value, args: Vec<Value>, current_env: SharedEnv) -> Result<Value, String> {
+pub fn apply_func(func_val: Value, args: Vec<Value>, current_env: SharedEnv) -> Result<Value, String> {
     match func_val {
         Value::Function(params_defs, ret_type_opt, body, closure_env) => {
              

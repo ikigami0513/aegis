@@ -5,6 +5,7 @@ pub fn register(map: &mut HashMap<String, super::NativeFn>) {
     map.insert("io_clear".to_string(), io_clear);
     map.insert("sys_env".to_string(), sys_env);
     map.insert("sys_args".to_string(), sys_args);
+    map.insert("sys_fail".to_string(), sys_fail);
 }
 
 fn io_clear(_: Vec<Value>) -> Result<Value, String> {
@@ -52,4 +53,9 @@ fn sys_args(_: Vec<Value>) -> Result<Value, String> {
     }
 
     Ok(Value::List(Rc::new(RefCell::new(script_args))))
+}
+
+fn sys_fail(args: Vec<Value>) -> Result<Value, String> {
+    let msg = args.get(0).and_then(|v| v.as_str().ok()).unwrap_or("Assertion failed".to_string());
+    return Err(msg);
 }

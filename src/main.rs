@@ -47,6 +47,11 @@ enum Commands {
     /// [APM] Se connecte au registre
     Login {
         token: String
+    },
+    
+    /// Lance les tests unitaires d'un fichier
+    Test {
+        file: String
     }
 }
 
@@ -172,6 +177,10 @@ fn main() -> Result<(), String> {
 
         Some(Commands::Login { token }) => {
             package_manager::login(token)
+        },
+        
+        Some(Commands::Test { file }) => {
+            run_tests(file)
         }
     }
 }
@@ -239,4 +248,81 @@ fn run_repl() {
             }
         }
     }
+}
+
+fn run_tests(filename: &str) -> Result<(), String> {
+    println!("🧪 Lancement des tests pour : {}", filename);
+
+    // 1. On charge et exécute le fichier normalement pour remplir le registre
+    let content = fs::read_to_string(filename)
+        .map_err(|e| format!("Impossible de lire {}: {}", filename, e))?;
+
+    // Compilation...
+    let json_data = if filename.ends_with(".aeg") {
+        compiler::compile(&content)?
+    } else {
+        serde_json::from_str(&content).map_err(|e| e.to_string())?
+    };
+    
+    let instructions = loader::parse_block(&json_data)?;
+    let env = Environment::new_global(); // Environnement partagé
+
+    // Exécution du script (pour définir les fonctions et remplir __AEGIS_TESTS)
+    for instr in instructions {
+        if let Err(e) = interpreter::execute(&instr, env.clone()) {
+            return Err(format!("Erreur lors du chargement du script : {}", e));
+        }
+    }
+
+    // 2. On récupère le registre __AEGIS_TESTS
+    // C'est une Value::List
+    let tests_val = env.borrow().get_variable("__AEGIS_TESTS")
+        .ok_or("Aucun test trouvé (Avez-vous importé 'stdlib/test.aeg' ?)")?;
+
+    let tests_list = match tests_val {
+        aegis_core::Value::List(l) => l,
+        _ => return Err("Le registre des tests est corrompu".into())
+    };
+
+    let tests = tests_list.borrow();
+    println!("📝 {} tests détectés.\n", tests.len());
+
+    let mut passed = 0;
+    let mut failed = 0;
+
+    // 3. On exécute chaque fonction de test isolément
+    for (i, test_func) in tests.iter().enumerate() {
+        print!("Test #{} ... ", i + 1);
+        io::stdout().flush().unwrap();
+
+        // On utilise notre helper `apply_func` (il faut qu'il soit public ou accessible)
+        // Ou on recrée un petit scope enfant manuellement
+        
+        // Astuce : Pour capturer l'erreur sans crasher le runner, on utilise le Result de Rust
+        // On crée un appel de fonction sans arguments
+        let res = interpreter::apply_func(test_func.clone(), vec![], env.clone());
+
+        match res {
+            Ok(_) => {
+                println!("✅ OK");
+                passed += 1;
+            },
+            Err(e) => {
+                println!("❌ ECHEC");
+                println!("   └─ {}", e);
+                failed += 1;
+            }
+        }
+    }
+
+    println!("\n--- RÉSULTATS ---");
+    println!("Total : {}", tests.len());
+    println!("Succès: {}", passed);
+    println!("Echecs: {}", failed);
+
+    if failed > 0 {
+        return Err("Certains tests ont échoué.".into());
+    }
+    
+    Ok(())
 }

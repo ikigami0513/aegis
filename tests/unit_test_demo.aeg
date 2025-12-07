@@ -1,0 +1,30 @@
+import "stdlib/test.aeg"
+
+// Fonction à tester
+func add(a, b) {
+    return a + b
+}
+
+// --- SUITE DE TESTS ---
+
+@test
+func test_addition_simple() {
+    var res = add(2, 3)
+    assert(res == 5, "2 + 3 devrait faire 5")
+}
+
+@test
+func test_addition_negatif() {
+    assert_eq(add(-1, -1), -2, "Addition négative incorrecte")
+}
+
+@test
+func test_qui_echoue() {
+    // Celui-ci doit planter pour montrer que le runner continue !
+    assert(1 == 2, "Mathématiques cassées !")
+}
+
+@test
+func test_final() {
+    assert(true, "Toujours vrai")
+}

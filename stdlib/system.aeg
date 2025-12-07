@@ -10,4 +10,8 @@ namespace System {
     func args() {
         return sys_args()
     }
+
+    func fail() {
+        return sys_fail()
+    }
 }
