@@ -93,7 +93,6 @@ impl Parser {
             TokenKind::Try => self.parse_try(),
             TokenKind::Switch => self.parse_switch(),
             TokenKind::Namespace => self.parse_namespace(),
-            TokenKind::Extern => self.parse_extern(),
             
             TokenKind::Identifier(_) => {
                 let line = self.current_line();
@@ -331,35 +330,6 @@ impl Parser {
         let name = if let TokenKind::Identifier(n) = &self.advance().kind { n.clone() } else { return Err("Ns Name".into()); };
         let body = self.parse_block()?;
         Ok(json!(["namespace", line, name, body]))
-    }
-
-    fn parse_extern(&mut self) -> Result<Value, String> {
-        let line = self.current_line();
-        self.advance(); // Eat 'extern'
-        self.consume(TokenKind::Func, "Expect 'func' after extern")?;
-        
-        let name = if let TokenKind::Identifier(n) = &self.advance().kind { n.clone() } else { return Err("Expect name".into()); };
-        
-        // On parse les params juste pour la forme (on pourrait les ignorer, mais c'est bien de les avoir)
-        self.consume(TokenKind::LParen, "(")?;
-        let mut params = Vec::new();
-        if !self.check(&TokenKind::RParen) {
-            loop {
-                if let TokenKind::Identifier(p) = &self.advance().kind { params.push(p.clone()); }
-                if !self.match_token(TokenKind::Comma) { break; }
-            }
-        }
-        self.consume(TokenKind::RParen, ")")?;
-        
-        self.consume(TokenKind::Eq, "Expect '=' after extern declaration")?;
-        
-        let key = match &self.advance().kind {
-            TokenKind::StringLiteral(s) => s.clone(),
-            _ => return Err("Expect registry key string".into())
-        };
-        
-        // JSON: ["extern", line, name, [params], key]
-        Ok(json!(["extern", line, name, params, key]))
     }
 
     fn parse_decorated_function(&mut self) -> Result<Value, String> {

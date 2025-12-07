@@ -62,19 +62,4 @@ impl Environment {
         }
         None
     }
-
-    // Helper pour enregistrer une fonction Rust
-    pub fn register_native(&mut self, key: &str, f: NativeFn) {
-        self.natives.insert(key.to_string(), f);
-    }
-    
-    pub fn get_native(&self, key: &str) -> Option<NativeFn> {
-        if let Some(f) = self.natives.get(key) {
-            return Some(*f);
-        }
-        if let Some(parent) = &self.parent {
-            return parent.borrow().get_native(key);
-        }
-        None
-    }
 }

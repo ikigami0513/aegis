@@ -98,11 +98,6 @@ pub enum Instruction {
     Namespace {
         name: String,
         body: Vec<Statement>
-    },
-    Extern {
-        name: String,
-        params: Vec<String>, // Juste les noms pour la documentation / vérification future
-        registry_key: String
     }
 }
 

@@ -300,15 +300,6 @@ pub fn parse_statement_json(json_instr: &JsonValue) -> Result<Statement, String>
                 body: parse_block(&array[3])?
             })
         },
-
-        "extern" => {
-            let name = array[2].as_str().unwrap().to_string();
-            let params_json = array[3].as_array().unwrap();
-            let params: Vec<String> = params_json.iter().map(|v| v.as_str().unwrap().to_string()).collect();
-            let key = array[4].as_str().unwrap().to_string();
-            
-            Ok(Instruction::Extern { name, params, registry_key: key })
-        },
         
         "break" => Ok(Instruction::ExpressionStatement(Expression::Literal(Value::Null))),
         

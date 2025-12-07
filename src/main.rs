@@ -2,28 +2,14 @@ mod ast;
 mod compiler;
 mod interpreter;
 mod loader;
+mod native;
 
 use ast::Environment;
 use std::{fs, env, io::{self, Write}};
 use serde_json::Value as JsonValue;
 
-use crate::ast::Value;
-
-fn rust_glfw_init(_args: Vec<Value>) -> Result<Value, String> {
-    println!("[Rust] Initializing GLFW...");
-    // Ici on appellerait le vrai code C/Rust unsafe
-    Ok(Value::Boolean(true))
-}
-
-fn rust_create_window(args: Vec<Value>) -> Result<Value, String> {
-    if args.len() != 2 { return Err("Window needs width and height".into()); }
-    let w = args[0].as_int()?;
-    let h = args[1].as_int()?;
-    println!("[Rust] Creating Window {}x{}", w, h);
-    Ok(Value::String(format!("WindowHandle_{}_{}", w, h)))
-}
-
 fn main() -> Result<(), String> {
+    native::init_registry();
     let args: Vec<String> = env::args().collect();
     
     // CAS 1 : Pas d'arguments -> Mode REPL (Interactif)
@@ -53,14 +39,6 @@ fn run_file(filename: &str) -> Result<(), String> {
     
     // 3. Execution
     let global_env = Environment::new_global();
-
-    // Added here for test_ffi.aeg
-    // REMOVE IN RELEASE
-    {
-        let mut env = global_env.borrow_mut();
-        env.register_native("glfw_init", rust_glfw_init);
-        env.register_native("glfw_create_window", rust_create_window);
-    }
 
     // println!("--- Début de l'exécution ---");
     for instr in instructions {

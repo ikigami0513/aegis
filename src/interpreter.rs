@@ -3,14 +3,10 @@ use crate::compiler;
 use crate::ast::environment::{Environment,SharedEnv};
 use crate::loader::parse_block;
 use std::collections::HashMap;
-use std::fs::{self, OpenOptions};
+use std::fs;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::io::{self, Write};
-use std::path::Path;
-use std::{thread, time};
-use std::time::{SystemTime, UNIX_EPOCH};
-use rand::Rng;
 
 /// Helper pour déterminer si une valeur est "Vraie" (Python-like)
 fn is_truthy(val: &Value) -> bool {
@@ -25,7 +21,6 @@ fn is_truthy(val: &Value) -> bool {
         Value::Instance(_) => true,
         Value::Function(..) => true,
         Value::Class(_) => true,
-        Value::Native(_) => true
     }
 }
 
@@ -301,18 +296,6 @@ pub fn evaluate(expr: &Expression, env: SharedEnv) -> Result<Value, String> {
                                 drop(dict);
                                 return apply_func(func, resolved, env.clone());
                             }
-                            
-                            // CAS 2 : C'est une fonction Native (FFI) <--- AJOUT CRITIQUE
-                            if let Value::Native(key) = val {
-                                let key_str = key.clone();
-                                drop(dict); // On libère le dictionnaire
-                                
-                                // On récupère le pointeur Rust et on exécute
-                                let func_ptr = env.borrow().get_native(&key_str)
-                                    .ok_or(format!("Binding natif '{}' introuvable dans le registre", key_str))?;
-                                
-                                return func_ptr(resolved);
-                            }
                         }
                         
                         Err(format!("Méthode '{}' introuvable dans le Namespace", method_name))
@@ -396,283 +379,21 @@ pub fn evaluate(expr: &Expression, env: SharedEnv) -> Result<Value, String> {
             let target_val_result = evaluate(target_expr, env.clone());
             
             match target_val_result {
-                Ok(val @ Value::Function(..)) => {
+                Ok(val) => {
+                    // C'est une fonction Aegis (définie par l'utilisateur ou stdlib)
                     apply_func(val, resolved_args, env)
                 },
-                Ok(Value::Native(key)) => {
-                    // 1. On cherche la fonction Rust dans l'environnement
-                    let func_ptr = env.borrow().get_native(&key)
-                        .ok_or(format!("Fonction native '{}' non liée (Binding manquant)", key))?;
-                    
-                    // 2. On l'exécute directement !
-                    return func_ptr(resolved_args);
-                },
                 
-                // Gestion des Natives (qui ne sont pas des Value::Function stockées)
-                // Si l'évaluation échoue (variable inconnue) OU si ce n'est pas une fonction...
-                // On regarde si c'est un nom connu.
-                Err(_) | Ok(_) => {
-                    // On essaie de voir si target_expr est une Variable portant un nom natif
+                Err(_) => {
+                    // 2. Si ce n'est pas une variable, est-ce une Fonction Native Rust ?
                     if let Expression::Variable(name) = target_expr.as_ref() {
-                        match name.as_str() {
-                            "str" => return Ok(Value::String(format!("{}", resolved_args[0]))),
-                            "to_int" => return Ok(Value::Integer(resolved_args[0].as_int()?)),
-                            "len" => { // Support générique len()
-                                match &resolved_args[0] {
-                                    Value::String(s) => return Ok(Value::Integer(s.len() as i64)),
-                                    Value::List(l) => return Ok(Value::Integer(l.borrow().len() as i64)),
-                                    Value::Dict(d) => return Ok(Value::Integer(d.borrow().len() as i64)),
-                                    _ => return Err("Type not supported for len()".into())
-                                }
-                            },
-                            "fmt" => {
-                                if resolved_args.len() != 2 { return Err("fmt attend 2 arguments (valeur, format)".into()); }
-                                let val = &resolved_args[0];
-                                let format_str = resolved_args[1].as_str()?;
-                                
-                                // Parsing basique du format (ex: ".2f")
-                                if format_str.ends_with("f") {
-                                    // Gestion des Floats
-                                    let precision = format_str.trim_start_matches('.').trim_end_matches('f')
-                                        .parse::<usize>().unwrap_or(2); // defaut 2
-                                    
-                                    let num = match val {
-                                        Value::Integer(i) => *i as f64,
-                                        Value::Float(f) => *f,
-                                        _ => return Ok(Value::String(format!("{}", val))) // Fallback
-                                    };
-                                    
-                                    // Astuce Rust pour précision dynamique
-                                    return Ok(Value::String(format!("{:.1$}", num, precision)));
-                                } 
-                                
-                                // Tu peux ajouter d'autres formats ici (ex: "b" pour binaire, "x" pour hexa...)
-                                
-                                Ok(Value::String(format!("{}", val)))
-                            },
-                            // --- FILE I/O (Natif) ---
-                            "io_read" => {
-                                if resolved_args.len() != 1 { return Err("io_read attend 1 argument (chemin)".into()); }
-                                let path = resolved_args[0].as_str()?;
-                                
-                                match fs::read_to_string(&path) {
-                                    Ok(content) => return Ok(Value::String(content)),
-                                    Err(_) => return Ok(Value::Null), // Retourne null si fichier introuvable
-                                }
-                            },
-                            "io_write" => {
-                                if resolved_args.len() != 2 { return Err("io_write attend 2 arguments (chemin, contenu)".into()); }
-                                let path = resolved_args[0].as_str()?;
-                                let content = resolved_args[1].as_str()?; // Force la conversion en string
-                                
-                                fs::write(&path, content).map_err(|e| format!("Erreur écriture: {}", e))?;
-                                return Ok(Value::Boolean(true));
-                            },
-                            "io_append" => {
-                                if resolved_args.len() != 2 { return Err("io_append attend 2 arguments (chemin, contenu)".into()); }
-                                let path = resolved_args[0].as_str()?;
-                                let content = resolved_args[1].as_str()?;
-                                
-                                let mut file = OpenOptions::new()
-                                    .write(true)
-                                    .append(true)
-                                    .create(true) // Crée le fichier s'il n'existe pas
-                                    .open(&path)
-                                    .map_err(|e| format!("Erreur ouverture fichier: {}", e))?;
-
-                                write!(file, "{}", content).map_err(|e| format!("Erreur append: {}", e))?;
-                                return Ok(Value::Boolean(true));
-                            },
-                            "io_exists" => {
-                                if resolved_args.len() != 1 { return Err("io_exists attend 1 argument (chemin)".into()); }
-                                let path = resolved_args[0].as_str()?;
-                                return Ok(Value::Boolean(Path::new(&path).exists()));
-                            },
-                            "io_delete" => {
-                                if resolved_args.len() != 1 { return Err("io_delete attend 1 argument".into()); }
-                                let path = resolved_args[0].as_str()?;
-                                if Path::new(&path).exists() {
-                                    fs::remove_file(&path).map_err(|e| e.to_string())?;
-                                    return Ok(Value::Boolean(true));
-                                }
-                                return Ok(Value::Boolean(false));
-                            },
-                            // ------------------------
-
-                            // --- TIME ---
-                            "time_now" => {
-                                let start = SystemTime::now();
-                                let since_the_epoch = start
-                                    .duration_since(UNIX_EPOCH)
-                                    .expect("Time went backwards");
-                                // On retourne des millisecondes pour être pratique
-                                return Ok(Value::Integer(since_the_epoch.as_millis() as i64));
-                            },
-                            "time_sleep" => {
-                                let ms = resolved_args[0].as_int()?;
-                                thread::sleep(time::Duration::from_millis(ms as u64));
-                                Ok(Value::Null)
-                            },
-                            // ------------------------
-
-                            // --- RANDOM ---
-                            "rand_int" => {
-                                if resolved_args.len() != 2 { return Err("rand_int attend 2 arguments (min, max)".into()); }
-                                let min = resolved_args[0].as_int()?;
-                                let max = resolved_args[1].as_int()?;
-                                
-                                if min >= max { return Err("min doit être inférieur à max".into()); }
-                                
-                                let mut rng = rand::thread_rng();
-                                let val = rng.gen_range(min..max); // [min, max[
-                                return Ok(Value::Integer(val));
-                            },
-                            "rand_float" => {
-                                let mut rng = rand::thread_rng();
-                                let val: f64 = rng.r#gen(); // 0.0 .. 1.0
-                                return Ok(Value::Float(val));
-                            },
-                            // ------------------------
-
-                            // --- System ---
-                            "io_clear" => {
-                                // Petit hack cross-platform pour nettoyer le terminal
-                                print!("\x1B[2J\x1B[1;1H"); 
-                                io::stdout().flush().unwrap();
-                                Ok(Value::Null)
-                            },
-
-                            "sys_env" => {
-                                if resolved_args.len() != 1 { return Err("sys_env attend le nom de la variable".into()); }
-                                let key = resolved_args[0].as_str()?;
-                                match std::env::var(key) {
-                                    Ok(val) => Ok(Value::String(val)),
-                                    Err(_) => Ok(Value::Null) // Retourne null si non trouvée
-                                }
-                            },
-
-                            "sys_args" => {
-                                // On récupère tous les arguments
-                                let all_args: Vec<String> = std::env::args().collect();
-                                
-                                // On cherche à partir d'où commencent les arguments du script
-                                // Généralement, c'est après le nom du script .aeg
-                                let mut script_args = Vec::new();
-                                let mut found_script = false;
-                                
-                                for arg in all_args {
-                                    if found_script {
-                                        script_args.push(Value::String(arg));
-                                    } else if arg.ends_with(".aeg") {
-                                        found_script = true;
-                                    }
-                                }
-                                
-                                // Si on est en mode REPL (pas de .aeg), on renvoie tout sauf l'exécutable
-                                if !found_script && std::env::args().len() > 1 {
-                                     // Fallback simple
-                                     script_args = std::env::args().skip(1).map(Value::String).collect();
-                                }
-
-                                Ok(Value::List(Rc::new(RefCell::new(script_args))))
-                            },
-                            // ------------------------
-
-                            // --- Json ---
-                            "json_parse" => {
-                                if resolved_args.len() != 1 { 
-                                    return Err("json_parse attend une chaine".into()); 
-                                }
-                                let json_str = resolved_args[0].as_str()?;
-                                
-                                let serde_val: serde_json::Value = serde_json::from_str(&json_str)
-                                    .map_err(|e| format!("Erreur Parsing JSON: {}", e))?;
-                                    
-                                Ok(serde_to_aegis(serde_val))
-                            }
-
-                            "json_stringify" => {
-                                if resolved_args.len() != 1 { return Err("json_stringify attend une valeur".into()); }
-                                Ok(Value::String(aegis_to_json_string(&resolved_args[0])))
-                            },
-                            // ------------------------
-
-                            // --- Web ---
-                            "http_get" => {
-                                if resolved_args.len() != 1 { return Err("http_get attend une URL".into()); }
-                                let url = resolved_args[0].as_str()?;
-                                
-                                // 1. Création d'un client avec User-Agent (Indispensable pour beaucoup d'API)
-                                let client = reqwest::blocking::Client::builder()
-                                    .user_agent("Aegis-Lang/1.0")
-                                    .build()
-                                    .map_err(|e| format!("Erreur création client HTTP: {}", e))?;
-
-                                // 2. Envoi de la requête
-                                let response = client.get(&url)
-                                    .send()
-                                    .map_err(|e| format!("Erreur connexion: {}", e))?;
-
-                                // 3. Vérification du statut HTTP (200 OK ?)
-                                if !response.status().is_success() {
-                                    return Err(format!("Erreur API: Code {}", response.status()));
-                                }
-
-                                // 4. Lecture du corps
-                                let text = response.text()
-                                    .map_err(|e| format!("Erreur lecture body: {}", e))?;
-                                    
-                                Ok(Value::String(text))
-                            },
-
-                            "http_post" => {
-                                if resolved_args.len() != 3 { 
-                                    return Err("http_post attend 3 arguments (url, body, content_type)".into()); 
-                                }
-                                let url = resolved_args[0].as_str()?;
-                                let body = resolved_args[1].as_str()?;
-                                let content_type = resolved_args[2].as_str()?;
-                                
-                                let client = reqwest::blocking::Client::new();
-                                let res = client.post(&url)
-                                    .header("Content-Type", content_type)
-                                    .body(body)
-                                    .send()
-                                    .map_err(|e| format!("Erreur Post: {}", e))?;
-                                    
-                                if !res.status().is_success() {
-                                    return Err(format!("Erreur API: {}", res.status()));
-                                }
-                                
-                                Ok(Value::String(res.text().unwrap_or_default()))
-                            },
-                            // ------------------------
-
-                            // --- Typing ---
-                            "typeof" => {
-                                if resolved_args.len() != 1 { return Err("typeof attend 1 argument".into()); }
-                                let type_name = match resolved_args[0] {
-                                    Value::Integer(_) => "int",
-                                    Value::Float(_) => "float",
-                                    Value::String(_) => "string",
-                                    Value::Boolean(_) => "bool",
-                                    Value::Null => "null",
-                                    Value::List(_) => "list",
-                                    Value::Dict(_) => "dict",
-                                    Value::Function(..) => "function",
-                                    Value::Class(_) => "class",
-                                    Value::Native(_) => "native",
-                                    Value::Instance(ref i) => return Ok(Value::String(i.borrow().class_def.name.clone())),
-                                };
-                                Ok(Value::String(type_name.to_string()))
-                            },
-                            // ------------------------
-
-                            _ => Err(format!("'{}' n'est pas une fonction ou n'existe pas", name)) 
+                        // On interroge le Registre Central
+                        if let Some(func_ptr) = crate::native::find(name) {
+                            return func_ptr(resolved_args);
                         }
-                    } else {
-                        Err("L'expression n'est pas appelable (pas une fonction)".into())
                     }
+                    
+                    Err("Fonction introuvable".into())
                 }
             }
         },
@@ -998,13 +719,7 @@ fn execute_internal(instr: &Instruction, env: SharedEnv) -> Result<Option<Value>
             env.borrow_mut().set_variable(name.clone(), ns_object);
             
             Ok(None)
-        },
-        Instruction::Extern { name, params: _, registry_key } => {
-            // On crée une variable qui contient la référence "Native"
-            // Quand on l'appellera, on saura qu'il faut chercher 'registry_key'
-            env.borrow_mut().set_variable(name.clone(), Value::Native(registry_key.clone()));
-            Ok(None)
-        },
+        }
     }
 }
 
@@ -1048,52 +763,5 @@ fn apply_func(func_val: Value, args: Vec<Value>, current_env: SharedEnv) -> Resu
              Ok(result)
         },
         _ => Err("L'argument n'est pas une fonction".into())
-    }
-}
-
-// Conversion : serde_json::Value (Externe) -> crate::ast::Value (Interne Aegis)
-fn serde_to_aegis(v: serde_json::Value) -> Value {
-    match v {
-        serde_json::Value::Null => Value::Null,
-        serde_json::Value::Bool(b) => Value::Boolean(b),
-        serde_json::Value::Number(n) => {
-            if n.is_i64() { Value::Integer(n.as_i64().unwrap()) }
-            else { Value::Float(n.as_f64().unwrap()) }
-        },
-        serde_json::Value::String(s) => Value::String(s),
-        serde_json::Value::Array(arr) => {
-            let list = arr.into_iter().map(serde_to_aegis).collect();
-            Value::List(Rc::new(RefCell::new(list)))
-        },
-        serde_json::Value::Object(map) => {
-            let mut dict = HashMap::new();
-            for (k, v) in map {
-                dict.insert(k, serde_to_aegis(v));
-            }
-            Value::Dict(Rc::new(RefCell::new(dict)))
-        }
-    }
-}
-
-// Conversion inverse (pour envoyer du JSON ou stringify) : Aegis -> Serde
-// (Version simplifiée qui retourne string direct pour l'instant)
-fn aegis_to_json_string(v: &Value) -> String {
-    match v {
-        Value::Null => "null".to_string(),
-        Value::Boolean(b) => b.to_string(),
-        Value::Integer(i) => i.to_string(),
-        Value::Float(f) => f.to_string(),
-        Value::String(s) => format!("\"{}\"", s), // Ajout des quotes pour JSON valide
-        Value::List(l) => {
-            let items: Vec<String> = l.borrow().iter().map(|i| aegis_to_json_string(i)).collect();
-            format!("[{}]", items.join(", "))
-        },
-        Value::Dict(d) => {
-            let items: Vec<String> = d.borrow().iter().map(|(k, v)| {
-                format!("\"{}\": {}", k, aegis_to_json_string(v))
-            }).collect();
-            format!("{{{}}}", items.join(", "))
-        },
-        _ => "\"unsupported\"".to_string()
     }
 }

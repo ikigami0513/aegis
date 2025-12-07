@@ -22,7 +22,6 @@ pub enum Value {
     Instance(Rc<RefCell<InstanceData>>),
     Function(Vec<(String, Option<String>)>, Option<String>, Vec<crate::ast::Statement>, Option<SharedEnv>),
     Class(ClassDefinition),
-    Native(String),
     Null
 }
 
@@ -59,7 +58,6 @@ impl fmt::Display for Value {
                 write!(f, "<Function({})>", p_str.join(", "))
             },
             Value::Class(c) => write!(f, "<Class {}>", c.name),
-            Value::Native(k) => write!(f, "<Native Fn {}>", k)
         }
     }
 }
