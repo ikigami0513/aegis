@@ -7,6 +7,7 @@ namespace Math {
     // --- Constants ---
 
     var PI = 3.1415926535
+    var TAU = 6.283185307
     var E = 2.7182818284
 
     // --- Basic Utilities ---
@@ -138,18 +139,18 @@ namespace Math {
     // Calculates sine of x (radians) using Taylor Series
     // Precision: 10 iterations
     func sin(x) {
-        // Normalization could be added here for large x, 
-        // but for basic usage within [-2PI, 2PI], this is fine.
-
-        var term = x
-        var sum = x
+        // 1. Normalisation : on ramène x entre 0 et TAU
+        // Grâce au support du modulo sur les floats dans ton interpréteur
+        var angle = x % TAU
+        
+        var term = angle
+        var sum = angle
         var n = 1
-
-        // Loop 10 times for precision
+        
+        // Le calcul se fait maintenant sur un petit nombre, donc précis !
         for (i, 0, 10, 1) {
-            // Formula: term = -term * x^2 / ((2n)(2n+1))
             var divisor = (2 * n) * (2 * n + 1)
-            term = 0 - (term * x * x) // Negative multiplication
+            term = 0 - (term * angle * angle)
             term = term / divisor
             
             sum = sum + term
@@ -161,14 +162,16 @@ namespace Math {
 
     // Calculates cosine of x (radians) using Taylor Series
     func cos(x) {
+        // 1. Normalisation
+        var angle = x % TAU
+
         var term = 1
         var sum = 1
         var n = 1
         
         for (i, 0, 10, 1) {
-            // Formula: term = -term * x^2 / ((2n-1)(2n))
             var divisor = (2 * n - 1) * (2 * n)
-            term = 0 - (term * x * x)
+            term = 0 - (term * angle * angle)
             term = term / divisor
             
             sum = sum + term
@@ -181,7 +184,7 @@ namespace Math {
     // Calculates tangent of x (radians)
     func tan(x) {
         var c = Math.cos(x)
-        
+
         // Avoid division by zero
         if (Math.abs(c) < 0.000001) {
             // Technically undefined/infinity, return a large number
