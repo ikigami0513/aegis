@@ -86,4 +86,11 @@ impl Value {
             _ => Err(format!("Expected string, got {:?}", self))
         }
     }
+
+    pub fn as_bool(&self) -> Result<bool, String> {
+        match self {
+            Value::Boolean(b) => Ok(*b),
+            _ => Err(format!("Expected Boolean, got {:?}", self))
+        }
+    }
 }
