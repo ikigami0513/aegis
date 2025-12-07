@@ -1,75 +1,200 @@
 use aegis_core::{compiler, interpreter, loader, native, plugins};
 use aegis_core::ast::environment::Environment;
+use clap::{Parser, Subcommand};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::io::Write;
-use std::{env, fs, io};
+use std::{fs, io};
 use serde_json::Value as JsonValue;
+use std::path::Path;
+
+mod package_manager;
+
+#[derive(Parser)]
+#[command(name = "aegis")]
+#[command(about = "Aegis Language Compiler & Package Manager", version = "1.0", long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Exécute un script Aegis
+    Run {
+        /// Le chemin du fichier .aeg
+        file: String,
+        
+        /// Arguments à passer au script (accessibles via System.args())
+        #[arg(last = true)]
+        args: Vec<String>,
+    },
+
+    /// Lance le mode interactif (REPL)
+    Repl,
+
+    /// [APM] Installe un paquet depuis le registre
+    Add {
+        /// Nom du paquet (ex: "glfw")
+        name: String,
+        /// Version spécifique (optionnel)
+        version: Option<String>,
+    },
+
+    /// [APM] Publie le paquet courant
+    Publish,
+
+    /// [APM] Se connecte au registre
+    Login {
+        token: String
+    }
+}
 
 #[derive(Deserialize)]
-struct Config {
+struct ProjectConfig {
     dependencies: Option<HashMap<String, String>>
+}
+
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct PackageManifest {
+    package: PackageInfo,
+    targets: Option<HashMap<String, String>>
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+struct PackageInfo {
+    name: String,
+    version: String,
 }
 
 fn load_config() {
     if let Ok(content) = fs::read_to_string("aegis.toml") {
-        println!("📝 Configuration trouvée, chargement des plugins...");
-        let config: Config = toml::from_str(&content).unwrap_or_else(|_| Config { dependencies: None });
+        println!("📝 Configuration trouvée...");
+        let config: ProjectConfig = toml::from_str(&content).unwrap_or_else(|_| ProjectConfig { dependencies: None });
 
         if let Some(deps) = config.dependencies {
-            for (name, path) in deps {
-                println!("🔌 Chargement du plugin '{}' depuis '{}'...", name, path);
-                if let Err(e) = plugins::load_plugin(&path) {
-                    eprintln!("❌ Erreur : {}", e);
+            for (name, version_req) in deps {
+                println!("📦 Résolution de la dépendance '{}' ({})", name, version_req);
+
+                // --- NOUVELLE LOGIQUE DE RÉSOLUTION ---
+                // Convention : Le paquet est dans ./packages/<nom>/
+                let package_path = Path::new("packages").join(&name);
+
+                // On vérifie d'abord si le paquet est installé
+                if !package_path.exists() {
+                    eprintln!("❌ Erreur : Le paquet '{}' n'est pas trouvé dans ./packages/", name);
+                    eprintln!("   💡 Astuce : Lancez 'aegis add {}' pour l'installer.", name);
+                    continue;
+                }
+
+                // On demande au résolveur de trouver le bon binaire (.so/.dll) dans ce dossier
+                match resolve_library_path(&package_path) {
+                    Ok(final_path) => {
+                        println!("   🔌 Chargement binaire : {:?}", final_path);
+                        if let Err(e) = plugins::load_plugin(final_path.to_str().unwrap()) {
+                            eprintln!("   ❌ Echec du chargement : {}", e);
+                        }
+                    },
+                    Err(e) => eprintln!("   ❌ Erreur de configuration du paquet '{}': {}", name, e),
                 }
             }
         }
     }
 }
 
+fn resolve_library_path(path: &Path) -> Result<std::path::PathBuf, String> {
+    // Si c'est un dossier (Cas standard maintenant)
+    if path.is_dir() {
+        let manifest_path = path.join("aegis.toml");
+        
+        if !manifest_path.exists() {
+            return Err(format!("Manifeste 'aegis.toml' manquant dans {:?}", path));
+        }
+
+        let content = fs::read_to_string(&manifest_path).map_err(|e| e.to_string())?;
+        let manifest: PackageManifest = toml::from_str(&content)
+            .map_err(|e| format!("Manifeste corrompu: {}", e))?;
+
+        // Détection de l'OS
+        let current_os = std::env::consts::OS; // "linux", "windows", "macos"
+
+        if let Some(targets) = manifest.targets {
+            if let Some(binary_file) = targets.get(current_os) {
+                let binary_path = path.join(binary_file);
+                if binary_path.exists() {
+                    return Ok(binary_path);
+                } else {
+                    return Err(format!("Le binaire spécifié pour {} ({}) est introuvable sur le disque", current_os, binary_file));
+                }
+            } else {
+                return Err(format!("Ce paquet ne supporte pas votre système ({})", current_os));
+            }
+        } else {
+            return Err("Section [targets] manquante dans le paquet".into());
+        }
+    }
+    
+    // Support Legacy (si on pointe directement un fichier .so/.dll)
+    if path.is_file() {
+        return Ok(path.to_path_buf());
+    }
+
+    Err(format!("Chemin invalide : {:?}", path))
+}
+
 fn main() -> Result<(), String> {
     native::init_registry();
     load_config();
-    
-    let args: Vec<String> = env::args().collect();
-    
-    // CAS 1 : Pas d'arguments -> Mode REPL (Interactif)
-    if args.len() < 2 {
-        println!("Aegis v0.1.0 - Mode Interactif");
-        println!("Tapez 'exit' ou 'quit' pour quitter.");
-        run_repl();
-        return Ok(());
-    }
 
-    // CAS 2 : Un fichier est fourni -> Exécution de fichier
-    run_file(&args[1])
+    let cli = Cli::parse();
+
+    match &cli.command {
+        Some(Commands::Run { file, args: _ }) => {
+            run_file(file)
+        }
+
+        Some(Commands::Repl) | None => {
+            println!("Aegis v1.0 - Mode Interactif");
+            println!("Tapez 'exit' ou 'quit' pour quitter.");
+            run_repl();
+            Ok(())
+        }
+
+        Some(Commands::Add { name, version }) => {
+            package_manager::install(name, version.clone())
+        }
+
+        Some(Commands::Publish) => {
+            package_manager::publish()
+        }
+
+        Some(Commands::Login { token }) => {
+            package_manager::login(token)
+        }
+    }
 }
 
 fn run_file(filename: &str) -> Result<(), String> {
-    let content = fs::read_to_string(filename).map_err(|e| format!("Impossible de lire {}: {}", filename, e))?;
+    let content = fs::read_to_string(filename)
+        .map_err(|e| format!("Impossible de lire {}: {}", filename, e))?;
 
-    // 1. Compilation
     let json_data: JsonValue = if filename.ends_with(".aeg") {
         compiler::compile(&content)?
     } else {
         serde_json::from_str(&content).map_err(|e| e.to_string())?
     };
     
-    // 2. Loading
     let instructions = loader::parse_block(&json_data)?;
-    
-    // 3. Execution
     let global_env = Environment::new_global();
 
-    // println!("--- Début de l'exécution ---");
     for instr in instructions {
         if let Err(e) = interpreter::execute(&instr, global_env.clone()) {
             eprintln!("Erreur d'exécution : {}", e);
-            break;
+            return Err(e); // Arrêt propre en cas d'erreur
         }
     }
-    // println!("--- Fin ---");
-
     Ok(())
 }
 
