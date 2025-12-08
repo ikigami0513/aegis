@@ -1,0 +1,19 @@
+import "stdlib/time.aeg"
+
+func fib(n) {
+    if (n < 2) { 
+        return n 
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+
+print "--- AEGIS BENCHMARK (Fib 30) ---"
+
+var start = Time.now()
+var result = fib(30)
+var end = Time.now()
+
+var duration = end - start
+
+print "Resultat : " + result
+print "Temps : " + duration + " ms"

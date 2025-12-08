@@ -1,0 +1,6 @@
+Language | Duration (ms)
+---------|---------------
+Rust     | 2 ms
+Python   | 147.44
+Aegis v1 | 7286
+Aegis v2 |
