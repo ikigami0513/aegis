@@ -1,0 +1,29 @@
+print "--- TEST TRY CATCH ---"
+
+try {
+    print "1. Debut du try"
+    var a = 10
+    var b = 0
+    print "2. Division par zero..."
+    var c = a / b // Erreur ici !
+    print "3. Ce message ne doit pas s'afficher"
+} catch (err) {
+    print "4. CATCH ! Erreur capturee : " + err
+}
+
+print "5. Le programme continue normalement"
+
+print ""
+print "--- TEST NESTED TRY ---"
+
+try {
+    try {
+        throw "Erreur Manuelle"
+    } catch (e) {
+        print "Interne : " + e
+    }
+    print "Apres le catch interne"
+    var x = liste_inconnue.at(0) // Erreur variable inconnue
+} catch (outer) {
+    print "Externe : " + outer
+}

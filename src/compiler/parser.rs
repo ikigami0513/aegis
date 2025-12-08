@@ -91,6 +91,7 @@ impl Parser {
             },
             TokenKind::Import => self.parse_import(),
             TokenKind::Try => self.parse_try(),
+            TokenKind::Throw => self.parse_throw(),
             TokenKind::Switch => self.parse_switch(),
             TokenKind::Namespace => self.parse_namespace(),
             
@@ -288,6 +289,13 @@ impl Parser {
         self.consume(TokenKind::RParen, ")")?;
         let catch_body = self.parse_block()?;
         Ok(json!(["try", line, try_body, err_var, catch_body]))
+    }
+
+    fn parse_throw(&mut self) -> Result<Value, String> {
+        let line = self.current_line();
+        self.advance(); // Consomme 'throw'
+        let expr = self.parse_expression()?;
+        Ok(json!(["throw", line, expr]))
     }
 
     fn parse_switch(&mut self) -> Result<Value, String> {

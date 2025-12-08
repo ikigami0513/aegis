@@ -1,0 +1,682 @@
+use std::collections::HashMap;
+use std::rc::Rc;
+use std::cell::RefCell;
+
+use crate::ast::{Instruction, Expression, Value};
+use crate::chunk::Chunk;
+use crate::opcode::OpCode;
+
+pub struct Compiler {
+    chunk: Chunk,
+    globals: Rc<RefCell<HashMap<String, u8>>>, 
+    locals: HashMap<String, u8>,
+    scope_depth: usize,
+}
+
+impl Compiler {
+    pub fn new() -> Self {
+        let globals = Rc::new(RefCell::new(HashMap::new()));
+        let natives = crate::native::get_all_names();
+        
+        {
+            let mut g = globals.borrow_mut();
+            for (i, name) in natives.into_iter().enumerate() {
+                // On assigne les ID 0, 1, 2... dans l'ordre alphabétique
+                g.insert(name, i as u8);
+            }
+        }
+
+        Self {
+            chunk: Chunk::new(),
+            globals,
+            locals: HashMap::new(),
+            scope_depth: 0,
+        }
+    }
+
+    fn new_with_globals(globals: Rc<RefCell<HashMap<String, u8>>>) -> Self {
+         Self {
+            chunk: Chunk::new(),
+            globals, 
+            locals: HashMap::new(),
+            scope_depth: 0,
+        }
+    }
+
+    pub fn compile(mut self, instruction: Vec<Instruction>) -> Chunk {
+        for instr in instruction {
+            self.compile_instruction(instr);
+        }
+        self.chunk
+    } 
+
+    fn emit_byte(&mut self, byte: u8) {
+        self.chunk.write(byte);
+    }
+    
+    fn emit_op(&mut self, op: OpCode) {
+        self.chunk.write(op as u8);
+    }
+
+    fn emit_constant(&mut self, val: Value) {
+        let idx = self.chunk.add_constant(val);
+        self.emit_op(OpCode::LoadConst);
+        self.emit_byte(idx);
+    }
+
+    fn resolve_global(&mut self, name: &str) -> u8 {
+        let mut globals = self.globals.borrow_mut();
+        if let Some(&id) = globals.get(name) {
+            return id;
+        }
+        let id = globals.len() as u8;
+        globals.insert(name.to_string(), id);
+        id
+    }
+
+    fn compile_expression(&mut self, expr: Expression) {
+        match expr {
+            Expression::Literal(val) => self.emit_constant(val),
+            Expression::Add(left, right) => {
+                self.compile_expression(*left);
+                self.compile_expression(*right);
+                self.emit_op(OpCode::Add);
+            },
+            Expression::Sub(left, right) => {
+                self.compile_expression(*left);
+                self.compile_expression(*right);
+                self.emit_op(OpCode::Sub);
+            },
+            Expression::Mul(left, right) => {
+                self.compile_expression(*left);
+                self.compile_expression(*right);
+                self.emit_op(OpCode::Mul);
+            },
+            Expression::Div(left, right) => {
+                self.compile_expression(*left);
+                self.compile_expression(*right);
+                self.emit_op(OpCode::Div);
+            },
+            Expression::Variable(name) => {
+                    // 1. On cherche d'abord dans les locales (si on est dans une fonction)
+                    if let Some(&idx) = self.locals.get(&name) {
+                        self.emit_op(OpCode::GetLocal);
+                        self.emit_byte(idx);
+                    } else {
+                        if self.scope_depth > 0 {
+                            let name_idx = self.chunk.add_constant(Value::String(name.clone()));
+                            self.emit_op(OpCode::GetFreeVar);
+                            self.emit_byte(name_idx);
+                        } else {
+                            let id = self.resolve_global(&name);
+                            self.emit_op(OpCode::GetGlobal);
+                            self.emit_byte(id);
+                        }
+                    }
+                },
+            Expression::LessThan(left, right) => {
+                self.compile_expression(*left);
+                self.compile_expression(*right);
+                self.emit_op(OpCode::Less);
+            },
+            Expression::GreaterThan(left, right) => {
+                self.compile_expression(*left);
+                self.compile_expression(*right);
+                self.emit_op(OpCode::Greater);
+            },
+            Expression::Equal(left, right) => {
+                self.compile_expression(*left);
+                self.compile_expression(*right);
+                self.emit_op(OpCode::Equal);
+            },
+            Expression::Call(target, args) => {
+                // 1. On sauvegarde la taille (nécessaire pour le borrow checker)
+                let arg_count = args.len(); 
+    
+                // A. D'abord on compile la fonction (pour qu'elle soit au fond de la pile)
+                self.compile_expression(*target);
+
+                // B. Ensuite on compile les arguments (qui s'empilent par-dessus)
+                for arg in args {
+                    self.compile_expression(arg);
+                }
+    
+                // ----------------------------------
+    
+                // 4. Émettre CALL
+                self.emit_op(OpCode::Call);
+                self.emit_byte(arg_count as u8);
+            }
+
+            Expression::Modulo(left, right) => {
+                self.compile_expression(*left);
+                self.compile_expression(*right);
+                self.emit_op(OpCode::Modulo);
+            },
+            Expression::NotEqual(left, right) => {
+                self.compile_expression(*left);
+                self.compile_expression(*right);
+                self.emit_op(OpCode::NotEqual);
+            },
+            Expression::LessEqual(left, right) => {
+                self.compile_expression(*left);
+                self.compile_expression(*right);
+                self.emit_op(OpCode::LessEqual);
+            },
+            Expression::GreaterEqual(left, right) => {
+                self.compile_expression(*left);
+                self.compile_expression(*right);
+                self.emit_op(OpCode::GreaterEqual);
+            },
+            // Bitwise
+            Expression::BitAnd(left, right) => {
+                self.compile_expression(*left);
+                self.compile_expression(*right);
+                self.emit_op(OpCode::BitAnd);
+            },
+             Expression::BitOr(left, right) => {
+                self.compile_expression(*left);
+                self.compile_expression(*right);
+                self.emit_op(OpCode::BitOr);
+            },
+            Expression::BitXor(left, right) => {
+                self.compile_expression(*left);
+                self.compile_expression(*right);
+                self.emit_op(OpCode::BitXor);
+            },
+            Expression::ShiftLeft(left, right) => {
+                self.compile_expression(*left);
+                self.compile_expression(*right);
+                self.emit_op(OpCode::ShiftLeft);
+            },
+            Expression::ShiftRight(left, right) => {
+                self.compile_expression(*left);
+                self.compile_expression(*right);
+                self.emit_op(OpCode::ShiftRight);
+            },
+            Expression::Not(expr) => {
+                self.compile_expression(*expr);
+                self.emit_op(OpCode::Not);
+            },
+
+            Expression::And(left, right) => {
+                self.compile_expression(*left);
+                // Si gauche est Faux, on saute tout de suite à la fin (résultat = Faux)
+                let end_jump = self.emit_jump(OpCode::JumpIfFalse);
+                self.emit_op(OpCode::Pop); // On pop le résultat de gauche
+                self.compile_expression(*right);
+                self.patch_jump(end_jump);
+            },
+            Expression::Or(left, right) => {
+                self.compile_expression(*left);
+                // Si gauche est Faux, on saute au "else" (qui évalue droite)
+                let else_jump = self.emit_jump(OpCode::JumpIfFalse);
+                let end_jump = self.emit_jump(OpCode::Jump); // Si Vrai, on saute à la fin
+                
+                self.patch_jump(else_jump);
+                self.emit_op(OpCode::Pop); // Pop le faux
+                self.compile_expression(*right);
+                self.patch_jump(end_jump);
+            },
+
+            Expression::List(exprs) => {
+                for expr in exprs.iter() {
+                    self.compile_expression(expr.clone());
+                }
+                self.emit_op(OpCode::MakeList);
+                self.emit_byte(exprs.len() as u8);
+            },
+            Expression::Dict(items) => {
+                let count = items.len(); // Sauvegarde avant consommation
+
+                for (key, val) in items {
+                    let key_idx = self.chunk.add_constant(Value::String(key.clone()));
+                    self.emit_op(OpCode::LoadConst);
+                    self.emit_byte(key_idx);
+                    self.compile_expression(val.clone());
+                }
+                self.emit_op(OpCode::MakeDict);
+                self.emit_byte((count * 2) as u8); // Utilisation de la variable sauvegardée
+            },
+
+            Expression::GetAttr(obj, name) => {
+                self.compile_expression(*obj);
+                let name_idx = self.chunk.add_constant(Value::String(name));
+                self.emit_op(OpCode::GetAttr);
+                self.emit_byte(name_idx);
+            },
+            Expression::CallMethod(obj, name, args) => {
+                let arg_count = args.len(); // Sauvegarde
+
+                // 1. Compiler l'objet
+                self.compile_expression(*obj);
+                
+                // 2. Compiler les arguments
+                for arg in args {
+                    self.compile_expression(arg.clone());
+                }
+                
+                // 3. Émettre l'instruction
+                let name_idx = self.chunk.add_constant(Value::String(name));
+                self.emit_op(OpCode::Method);
+                self.emit_byte(name_idx);
+                self.emit_byte(arg_count as u8); // Utilisation
+            },
+            Expression::New(class_expr, args) => {
+                let arg_count = args.len(); // Sauvegarde
+
+                self.compile_expression(*class_expr);
+                
+                for arg in args {
+                    self.compile_expression(arg.clone());
+                }
+                
+                self.emit_op(OpCode::Call); // Ou OpCode::New si tu en as créé un
+                self.emit_byte(arg_count as u8); // Utilisation
+            },
+
+            Expression::Function { params, ret_type, body } => {
+                let mut func_compiler = Compiler::new_with_globals(self.globals.clone());
+                func_compiler.scope_depth = 1;
+
+                for (i, (param_name, _)) in params.iter().enumerate() {
+                    func_compiler.locals.insert(param_name.clone(), i as u8);
+                }
+                for stmt in body {
+                    func_compiler.compile_instruction(stmt.kind);
+                }
+                func_compiler.emit_op(OpCode::LoadConst);
+                let null_idx = func_compiler.chunk.add_constant(Value::Null);
+                func_compiler.emit_byte(null_idx);
+                func_compiler.emit_op(OpCode::Return);
+
+                let func_chunk = func_compiler.chunk;
+                let compiled_val = Value::Function(params.clone(), ret_type.clone(), func_chunk, None);
+                let const_idx = self.chunk.add_constant(compiled_val);
+
+                self.emit_op(OpCode::LoadConst);
+                self.emit_byte(const_idx);
+
+                self.emit_op(OpCode::MakeClosure);
+            },
+        }
+    }
+
+    fn compile_instruction(&mut self, instr: Instruction) {
+        match instr {
+            Instruction::Print(expr) => {
+                self.compile_expression(expr);
+                self.emit_op(OpCode::Print);
+            },
+            Instruction::Return(expr) => {
+                self.compile_expression(expr); // 1. Calcule la valeur de retour
+                self.emit_op(OpCode::Return);  // 2. Quitte la fonction
+            },
+            Instruction::Set(var_name, _, expr) => {
+                self.compile_expression(expr); // La valeur calculée est maintenant sur la pile [val]
+
+                // CAS 1 : C'est une variable locale DÉJÀ connue (Assignation : x = 5)
+                if let Some(&idx) = self.locals.get(&var_name) {
+                    self.emit_op(OpCode::SetLocal);
+                    self.emit_byte(idx);
+                    self.emit_op(OpCode::Pop); // Nettoyage : On retire la valeur car c'est une instruction (statement)
+                } 
+                // CAS 2 : On est dans une fonction, c'est une NOUVELLE variable (Déclaration : var res = ...)
+                else if self.scope_depth > 0 {
+                    let idx = self.locals.len() as u8; // Le prochain slot libre sur la pile
+                    self.locals.insert(var_name.clone(), idx);
+                    
+                    // ASTUCE MAGIQUE DE LA PILE :
+                    // On ne fait RIEN d'autre. La valeur [val] est déjà au sommet de la pile.
+                    // En l'enregistrant dans 'self.locals' à l'index 'idx', on dit au compilateur :
+                    // "La valeur qui est actuellement sur la pile est maintenant la variable 'res'".
+                    // Elle y restera jusqu'à la fin de la fonction.
+                } 
+                // CAS 3 : C'est une Globale (Assignation ou Déclaration globale)
+                else {
+                    let id = self.resolve_global(&var_name);
+                    self.emit_op(OpCode::SetGlobal); // SetGlobal fait déjà un Pop dans la VM
+                    self.emit_byte(id);
+                }
+            },
+            Instruction::If { condition, body, else_body } => {
+                self.compile_if(condition, body, else_body);
+            },
+            Instruction::While { condition, body } => {
+                self.compile_while(condition, body);
+            },
+            Instruction::Function { name, params, ret_type, body } => {
+                let mut func_compiler = Compiler::new_with_globals(self.globals.clone());
+                func_compiler.scope_depth = 1;
+
+                for (i, (param_name, _)) in params.iter().enumerate() {
+                    func_compiler.locals.insert(param_name.clone(), i as u8);
+                }
+
+                for stmt in body {
+                    func_compiler.compile_instruction(stmt.kind);
+                }
+
+                func_compiler.emit_op(OpCode::LoadConst);
+                let null_idx = func_compiler.chunk.add_constant(Value::Null);
+                func_compiler.emit_byte(null_idx);
+                func_compiler.emit_op(OpCode::Return);
+
+                let func_chunk = func_compiler.chunk;
+                let compiled_val = Value::Function(
+                    params.clone(), 
+                    ret_type.clone(), 
+                    func_chunk, 
+                    None 
+                );
+                
+
+                let const_idx = self.chunk.add_constant(compiled_val);
+                self.emit_op(OpCode::LoadConst);
+                self.emit_byte(const_idx);
+
+                self.emit_op(OpCode::MakeClosure);
+
+                let global_id = self.resolve_global(&name);
+                self.emit_op(OpCode::SetGlobal);
+                self.emit_byte(global_id);
+            },
+
+            Instruction::ForRange { var_name, start, end, step, body } => {
+                // 1. Initialiser la variable 'i'
+                self.compile_expression(start);
+                // On considère que c'est une variable locale dans ce scope temporaire
+                // (Simplification : on utilise set_variable scope courant)
+                if self.scope_depth > 0 {
+                    // Logique locale (complexe à implémenter ici sans context local complet)
+                    // Pour simplifier, traitons-le comme une globale ou ajoutons aux locals
+                    // TODO: Gérer l'ajout dynamique de locale
+                    let id = self.resolve_global(&var_name); // Fallback global pour l'exemple
+                    self.emit_op(OpCode::SetGlobal); 
+                    self.emit_byte(id);
+                } else {
+                    let id = self.resolve_global(&var_name);
+                    self.emit_op(OpCode::SetGlobal); 
+                    self.emit_byte(id);
+                }
+
+                // 2. Début de boucle
+                let loop_start = self.chunk.code.len();
+
+                // 3. Condition : i < end
+                // GET i
+                let id = self.resolve_global(&var_name);
+                self.emit_op(OpCode::GetGlobal); self.emit_byte(id);
+                // GET end (On devrait peut-être stocker 'end' dans une var temporaire pour éviter de le recalculer)
+                self.compile_expression(end);
+                self.emit_op(OpCode::Less); // ou NotEqual selon logique
+
+                let exit_jump = self.emit_jump(OpCode::JumpIfFalse);
+                self.emit_op(OpCode::Pop);
+
+                // 4. Corps
+                for stmt in body {
+                    self.compile_instruction(stmt.kind);
+                }
+
+                // 5. Incrément : i = i + step
+                self.emit_op(OpCode::GetGlobal); self.emit_byte(id);
+                self.compile_expression(step);
+                self.emit_op(OpCode::Add);
+                self.emit_op(OpCode::SetGlobal); self.emit_byte(id);
+
+                // 6. Loop
+                self.emit_loop(loop_start);
+                self.patch_jump(exit_jump);
+                self.emit_op(OpCode::Pop);
+            },
+
+            Instruction::Switch { value, cases, default } => {
+                self.compile_expression(value); // La valeur à tester est sur la pile
+
+                let mut end_jumps = Vec::new();
+
+                for (case_val, case_body) in cases {
+                    self.emit_op(OpCode::Dup);
+                    
+                    self.compile_expression(case_val);
+                    self.emit_op(OpCode::Equal);
+                    
+                    let next_case_jump = self.emit_jump(OpCode::JumpIfFalse);
+                    self.emit_op(OpCode::Pop); // Pop le booléen true
+                    
+                    // Body
+                    for stmt in case_body { self.compile_instruction(stmt.kind); }
+                    
+                    // Si on a exécuté un cas, on saute à la fin (break implicite)
+                    end_jumps.push(self.emit_jump(OpCode::Jump));
+                    
+                    self.patch_jump(next_case_jump);
+                    self.emit_op(OpCode::Pop); // Pop le booléen false
+                }
+
+                // Default
+                for stmt in default { self.compile_instruction(stmt.kind); }
+
+                // Patch de toutes les sorties
+                for jump in end_jumps { self.patch_jump(jump); }
+                
+                self.emit_op(OpCode::Pop); // On nettoie la valeur testée originale
+            },
+
+            Instruction::ExpressionStatement(expr) => {
+                self.compile_expression(expr);
+                self.emit_op(OpCode::Pop); // On jette le résultat
+            },
+            
+            Instruction::Input(var_name, prompt) => {
+                self.compile_expression(prompt);
+                self.emit_op(OpCode::Input); // VM devra gérer l'affichage + lecture
+                // Le résultat de Input est sur la pile, on le stocke
+                let id = self.resolve_global(&var_name); // Ou local
+                self.emit_op(OpCode::SetGlobal);
+                self.emit_byte(id);
+            },
+
+            Instruction::Class(def) => {
+                let mut compiled_methods = HashMap::new();
+
+                for (m_name, (m_params, m_body)) in def.methods {
+                    let mut method_compiler = Compiler::new_with_globals(self.globals.clone());
+                    method_compiler.scope_depth = 1;
+                    
+                    let mut actual_params = vec![("this".to_string(), None)];
+                    actual_params.extend(m_params.clone());
+
+                    for (i, (param_name, _)) in actual_params.iter().enumerate() {
+                        method_compiler.locals.insert(param_name.clone(), i as u8);
+                    }
+                    for stmt in m_body {
+                        method_compiler.compile_instruction(stmt.kind);
+                    }
+                    method_compiler.emit_op(OpCode::LoadConst);
+                    let null_idx = method_compiler.chunk.add_constant(Value::Null);
+                    method_compiler.emit_byte(null_idx);
+                    method_compiler.emit_op(OpCode::Return);
+
+                    let method_val = Value::Function(actual_params, None, method_compiler.chunk, None);
+                    compiled_methods.insert(m_name, method_val);
+                }
+
+                let class_val = Value::Class {
+                    name: def.name.clone(),
+                    params: def.params.clone(),
+                    methods: compiled_methods,
+                };
+
+                let const_idx = self.chunk.add_constant(class_val);
+                self.emit_op(OpCode::LoadConst);
+                self.emit_byte(const_idx);
+                
+                let global_id = self.resolve_global(&def.name);
+                self.emit_op(OpCode::SetGlobal);
+                self.emit_byte(global_id);
+            },
+
+            Instruction::SetAttr(obj, attr, val) => {
+                self.compile_expression(*obj); // 1. L'objet
+                self.compile_expression(val);  // 2. La valeur
+                
+                let name_idx = self.chunk.add_constant(Value::String(attr));
+                self.emit_op(OpCode::SetAttr);
+                self.emit_byte(name_idx);
+                // SetAttr laisse généralement la valeur sur la pile (comme une assignation),
+                // mais comme c'est une instruction ici, on POP pour nettoyer.
+                self.emit_op(OpCode::Pop); 
+            },
+
+            Instruction::TryCatch { try_body, error_var, catch_body } => {
+                // 1. Setup Exception Handler
+                let catch_jump = self.emit_jump(OpCode::SetupExcept);
+
+                // 2. Compile Try Block
+                for stmt in try_body {
+                    self.compile_instruction(stmt.kind);
+                }
+
+                // 3. Pop Exception (Success Path)
+                self.emit_op(OpCode::PopExcept);
+                let end_jump = self.emit_jump(OpCode::Jump);
+
+                // 4. Start of Catch
+                self.patch_jump(catch_jump);
+
+                // 5. Variable Binding (CORRIGÉ)
+                self.scope_depth += 1;
+                
+                // On déclare que la variable 'e' existe et qu'elle est située au sommet actuel de la pile.
+                let catch_var_idx = self.locals.len() as u8;
+                self.locals.insert(error_var.clone(), catch_var_idx);
+                
+                // --- MODIFICATION ICI ---
+                // On ne fait NI SetLocal, NI Pop. 
+                // La valeur est déjà sur la pile, c'est notre variable locale.
+                // ------------------------
+
+                for stmt in catch_body {
+                    self.compile_instruction(stmt.kind);
+                }
+                
+                // 6. Cleanup (OPTIONNEL MAIS RECOMMANDÉ)
+                // À la fin du catch, on retire la variable 'e' de la pile pour revenir à l'état propre
+                self.emit_op(OpCode::Pop); 
+                
+                self.locals.remove(&error_var);
+                self.scope_depth -= 1;
+
+                // 7. End
+                self.patch_jump(end_jump);
+            },
+            Instruction::Throw(expr) => {
+                // 1. On compile l'expression (l'erreur) pour la mettre sur la pile
+                self.compile_expression(expr);
+                
+                // 2. On émet l'OpCode qui va déclencher la panique contrôlée dans la VM
+                self.emit_op(OpCode::Throw);
+            },
+
+            Instruction::Import(_) => todo!(),
+            Instruction::Namespace { .. } => todo!(),
+        }
+    }
+
+    // Emits a jump instruction with a placeholder operand.
+    // Returns the offset of the placeholder so we can patch it later.
+    fn emit_jump(&mut self, instruction: OpCode) -> usize {
+        self.emit_op(instruction);
+        self.emit_byte(0xff); // Placeholder high
+        self.emit_byte(0xff); // Placeholder low
+        self.chunk.code.len() - 2
+    }
+
+    // Goes back to 'offset' and writes the current distance
+    fn patch_jump(&mut self, offset: usize) {
+        // -2 to adjust for the jump offset itself
+        let jump = self.chunk.code.len() - offset - 2;
+
+        if jump > u16::MAX as usize {
+            panic!("Too much code to jump over!");
+        }
+
+        self.chunk.code[offset] = ((jump >> 8) & 0xff) as u8;
+        self.chunk.code[offset + 1] = (jump & 0xff) as u8;
+    }
+
+    // Compile an IF statement
+    // if (cond) { then } else { else }
+    fn compile_if(&mut self, condition: Expression, then_body: Vec<crate::ast::Statement>, else_body: Vec<crate::ast::Statement>) {
+        // 1. Compile condition
+        self.compile_expression(condition);
+
+        // 2. Jump over 'then' if false
+        let then_jump = self.emit_jump(OpCode::JumpIfFalse);
+
+        // 3. Compile 'then' block
+        self.emit_op(OpCode::Pop); // Clean up condition result (optional optimization)
+        for stmt in then_body {
+            // Note: In v2, we should probably work with Instructions directly, 
+            // but for now let's map statement.kind
+            self.compile_instruction(stmt.kind);
+        }
+
+        // 4. Jump over 'else'
+        let else_jump = self.emit_jump(OpCode::Jump);
+
+        // 5. Patch the first jump (target is here, start of else)
+        self.patch_jump(then_jump);
+        
+        self.emit_op(OpCode::Pop); // Clean up condition for the else path
+
+        // 6. Compile 'else' block
+        for stmt in else_body {
+            self.compile_instruction(stmt.kind);
+        }
+
+        // 7. Patch the second jump (target is end)
+        self.patch_jump(else_jump);
+    }
+
+    // Émet une instruction de saut en arrière
+    fn emit_loop(&mut self, loop_start: usize) {
+        self.emit_op(OpCode::Loop);
+
+        // Calcul du saut : position actuelle - début de la boucle + 2 (taille des opérandes)
+        let offset = self.chunk.code.len() - loop_start + 2;
+        
+        if offset > u16::MAX as usize {
+            panic!("Loop body too large!");
+        }
+
+        self.emit_byte(((offset >> 8) & 0xff) as u8);
+        self.emit_byte((offset & 0xff) as u8);
+    }
+
+    fn compile_while(&mut self, condition: Expression, body: Vec<crate::ast::Statement>) {
+        // 1. Marquer le début de la boucle (pour y revenir après)
+        let loop_start = self.chunk.code.len();
+
+        // 2. Compiler la condition
+        self.compile_expression(condition);
+
+        // 3. Sauter à la fin si la condition est fausse
+        let exit_jump = self.emit_jump(OpCode::JumpIfFalse);
+        self.emit_op(OpCode::Pop); // Nettoyer la condition de la pile
+
+        // 4. Compiler le corps
+        for stmt in body {
+            self.compile_instruction(stmt.kind);
+        }
+
+        // 5. Remonter au début !
+        self.emit_loop(loop_start);
+
+        // 6. Patcher le saut de sortie
+        self.patch_jump(exit_jump);
+        self.emit_op(OpCode::Pop); // Nettoyer la condition finale
+    }
+}

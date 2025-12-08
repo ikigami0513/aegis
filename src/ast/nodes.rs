@@ -98,7 +98,8 @@ pub enum Instruction {
     Namespace {
         name: String,
         body: Vec<Statement>
-    }
+    },
+    Throw(Expression),
 }
 
 #[derive(Debug, Clone, PartialEq)]

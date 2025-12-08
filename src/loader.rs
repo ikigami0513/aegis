@@ -293,6 +293,8 @@ pub fn parse_statement_json(json_instr: &JsonValue) -> Result<Statement, String>
                 catch_body: parse_block(&array[4])? 
             })
         },
+
+        "throw" => Ok(Instruction::Throw(parse_expression(&array[2])?)),
         
         "namespace" => {
             Ok(Instruction::Namespace {

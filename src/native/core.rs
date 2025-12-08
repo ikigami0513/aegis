@@ -58,22 +58,33 @@ fn fmt(args: Vec<Value>) -> Result<Value, String> {
 }
 
 fn type_of(args: Vec<Value>) -> Result<Value, String> {
-    if args.len() != 1 { 
-        return Err("typeof attend 1 argument".into()); 
-    }
+    if args.len() != 1 { return Err("typeof attend 1 argument".into()); }
                                 
-    let type_name = match args[0] {
-        Value::Integer(_) => "int",
-        Value::Float(_) => "float",
-        Value::String(_) => "string",
-        Value::Boolean(_) => "bool",
-        Value::Null => "null",
-        Value::List(_) => "list",
-        Value::Dict(_) => "dict",
-        Value::Function(..) => "function",
-        Value::Class(_) => "class",
-        Value::Instance(ref i) => return Ok(Value::String(i.borrow().class_def.name.clone())),
+    // On détermine le nom du type (String)
+    let type_name = match &args[0] {
+        Value::Integer(_) => "int".to_string(),
+        Value::Float(_) => "float".to_string(),
+        Value::String(_) => "string".to_string(),
+        Value::Boolean(_) => "bool".to_string(),
+        Value::Null => "null".to_string(),
+        Value::List(_) => "list".to_string(),
+        Value::Dict(_) => "dict".to_string(),
+                                    
+        Value::Function(..) => "function".to_string(),
+        Value::Class { .. } => "class".to_string(),
+                                    
+        // Pour l'instance, on récupère le nom dynamiquement
+        Value::Instance(i) => {
+            let borrow = i.borrow();
+            if let Value::Class { ref name, .. } = *borrow.class {
+                name.clone()
+            } 
+            else {
+                "instance".to_string()
+            }
+        },
+        Value::Native(_) => "function".to_string()
     };
-    
-    Ok(Value::String(type_name.to_string()))
+
+    Ok(Value::String(type_name))
 }

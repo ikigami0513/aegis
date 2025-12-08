@@ -2,12 +2,12 @@ use std::fmt;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
-use crate::ast::nodes::ClassDefinition;
 use crate::ast::environment::SharedEnv;
+use crate::chunk::Chunk;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct InstanceData {
-    pub class_def: ClassDefinition, 
+    pub class: Rc<Value>, 
     pub fields: HashMap<String, Value>,
 }
 
@@ -19,9 +19,14 @@ pub enum Value {
     Boolean(bool),
     List(Rc<RefCell<Vec<Value>>>),
     Dict(Rc<RefCell<HashMap<String, Value>>>),
+    Function(Vec<(String, Option<String>)>, Option<String>, Chunk, Option<SharedEnv>),
+    Class {
+        name: String,
+        params: Vec<(String, Option<String>)>,
+        methods: HashMap<String, Value>, // Value::Function
+    },
     Instance(Rc<RefCell<InstanceData>>),
-    Function(Vec<(String, Option<String>)>, Option<String>, Vec<crate::ast::Statement>, Option<SharedEnv>),
-    Class(ClassDefinition),
+    Native(String),
     Null
 }
 
@@ -49,15 +54,20 @@ impl fmt::Display for Value {
                 }
                 write!(f, "}}")
             },
-            Value::Instance(inst) => {
-                let data = inst.borrow();
-                write!(f, "<Instance of {}>", data.class_def.name)
-            },
             Value::Function(params, _, _, _) => {
-                let p_str: Vec<String> = params.iter().map(|p| p.0.clone()).collect();
-                write!(f, "<Function({})>", p_str.join(", "))
+                 let p_str: Vec<String> = params.iter().map(|p| p.0.clone()).collect();
+                 write!(f, "<Function({})>", p_str.join(", "))
             },
-            Value::Class(c) => write!(f, "<Class {}>", c.name),
+            Value::Class { name, .. } => write!(f, "<Class {}>", name),
+            Value::Instance(i) => {
+                // On doit caster car i.class est une Value::Class
+                if let Value::Class { name, .. } = &*i.borrow().class {
+                     write!(f, "<Instance of {}>", name)
+                } else {
+                     write!(f, "<Instance>")
+                }
+            },
+            Value::Native(name) => write!(f, "<Native Fn {}>", name),
         }
     }
 }

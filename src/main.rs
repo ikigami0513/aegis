@@ -7,12 +7,15 @@ use std::io::Write;
 use std::{fs, io};
 use serde_json::Value as JsonValue;
 use std::path::Path;
+// use std::time::Instant; // Décommenter si tu veux mesurer le temps d'exécution
 
 mod package_manager;
 
+use aegis_core::vm::VM;
+
 #[derive(Parser)]
 #[command(name = "aegis")]
-#[command(about = "Aegis Language Compiler & Package Manager", version = "1.0", long_about = None)]
+#[command(about = "Aegis Language Compiler & Package Manager", version = "2.0", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>
@@ -20,17 +23,18 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Exécute un script Aegis
+    /// Exécute un script Aegis (Moteur v2)
     Run {
         /// Le chemin du fichier .aeg
         file: String,
         
         /// Arguments à passer au script (accessibles via System.args())
+        /// Note: L'intégration des args dans la VM v2 reste à faire.
         #[arg(last = true)]
         args: Vec<String>,
     },
 
-    /// Lance le mode interactif (REPL)
+    /// Lance le mode interactif (REPL) - Toujours sur v1 pour l'instant
     Repl,
 
     /// [APM] Installe un paquet depuis le registre
@@ -49,10 +53,12 @@ enum Commands {
         token: String
     },
     
-    /// Lance les tests unitaires d'un fichier
+    /// Lance les tests unitaires d'un fichier - Toujours sur v1 pour l'instant
     Test {
         file: String
-    }
+    },
+    
+    // La commande Vm a été supprimée.
 }
 
 #[derive(Deserialize)]
@@ -76,28 +82,24 @@ struct PackageInfo {
 
 fn load_config() {
     if let Ok(content) = fs::read_to_string("aegis.toml") {
-        println!("📝 Configuration trouvée...");
+        // println!("📝 Configuration trouvée..."); // Moins verbeux pour l'exécution normale
         let config: ProjectConfig = toml::from_str(&content).unwrap_or_else(|_| ProjectConfig { dependencies: None });
 
         if let Some(deps) = config.dependencies {
-            for (name, version_req) in deps {
-                println!("📦 Résolution de la dépendance '{}' ({})", name, version_req);
+            for (name, _version_req) in deps {
+                // println!("📦 Résolution de la dépendance '{}' ({})", name, version_req);
 
-                // --- NOUVELLE LOGIQUE DE RÉSOLUTION ---
-                // Convention : Le paquet est dans ./packages/<nom>/
                 let package_path = Path::new("packages").join(&name);
 
-                // On vérifie d'abord si le paquet est installé
                 if !package_path.exists() {
                     eprintln!("❌ Erreur : Le paquet '{}' n'est pas trouvé dans ./packages/", name);
                     eprintln!("   💡 Astuce : Lancez 'aegis add {}' pour l'installer.", name);
                     continue;
                 }
 
-                // On demande au résolveur de trouver le bon binaire (.so/.dll) dans ce dossier
                 match resolve_library_path(&package_path) {
                     Ok(final_path) => {
-                        println!("   🔌 Chargement binaire : {:?}", final_path);
+                        // println!("   🔌 Chargement binaire : {:?}", final_path);
                         if let Err(e) = plugins::load_plugin(final_path.to_str().unwrap()) {
                             eprintln!("   ❌ Echec du chargement : {}", e);
                         }
@@ -110,7 +112,6 @@ fn load_config() {
 }
 
 fn resolve_library_path(path: &Path) -> Result<std::path::PathBuf, String> {
-    // Si c'est un dossier (Cas standard maintenant)
     if path.is_dir() {
         let manifest_path = path.join("aegis.toml");
         
@@ -122,8 +123,7 @@ fn resolve_library_path(path: &Path) -> Result<std::path::PathBuf, String> {
         let manifest: PackageManifest = toml::from_str(&content)
             .map_err(|e| format!("Manifeste corrompu: {}", e))?;
 
-        // Détection de l'OS
-        let current_os = std::env::consts::OS; // "linux", "windows", "macos"
+        let current_os = std::env::consts::OS;
 
         if let Some(targets) = manifest.targets {
             if let Some(binary_file) = targets.get(current_os) {
@@ -141,7 +141,6 @@ fn resolve_library_path(path: &Path) -> Result<std::path::PathBuf, String> {
         }
     }
     
-    // Support Legacy (si on pointe directement un fichier .so/.dll)
     if path.is_file() {
         return Ok(path.to_path_buf());
     }
@@ -156,12 +155,13 @@ fn main() -> Result<(), String> {
     let cli = Cli::parse();
 
     match &cli.command {
+        // La commande RUN utilise maintenant la VM v2
         Some(Commands::Run { file, args: _ }) => {
             run_file(file)
         }
 
         Some(Commands::Repl) | None => {
-            println!("Aegis v1.0 - Mode Interactif");
+            println!("Aegis v2.0 - Mode Interactif (Legacy v1 Engine)");
             println!("Tapez 'exit' ou 'quit' pour quitter.");
             run_repl();
             Ok(())
@@ -181,39 +181,53 @@ fn main() -> Result<(), String> {
         
         Some(Commands::Test { file }) => {
             run_tests(file)
-        }
+        },
     }
 }
 
+// Nouvelle implémentation utilisant la VM v2
 fn run_file(filename: &str) -> Result<(), String> {
     let content = fs::read_to_string(filename)
         .map_err(|e| format!("Impossible de lire {}: {}", filename, e))?;
 
+    // 1. Frontend (Partagé avec la v1) : Source -> AST (JSON)
     let json_data: JsonValue = if filename.ends_with(".aeg") {
         compiler::compile(&content)?
     } else {
         serde_json::from_str(&content).map_err(|e| e.to_string())?
     };
     
-    let instructions = loader::parse_block(&json_data)?;
-    let global_env = Environment::new_global();
+    // 2. Loader (Partagé avec la v1) : AST -> Statements
+    let statements = loader::parse_block(&json_data)?;
 
-    for instr in instructions {
-        if let Err(e) = interpreter::execute(&instr, global_env.clone()) {
-            eprintln!("Erreur d'exécution : {}", e);
-            return Err(e); // Arrêt propre en cas d'erreur
-        }
-    }
-    Ok(())
+    // 3. Adapter : Statements -> Instructions pures
+    // C'est nécessaire car le loader v1 retourne des objets Statement (avec métadonnées)
+    // alors que le compilateur v2 attend des instructions brutes.
+    let instructions = statements.into_iter().map(|s| s.kind).collect();
+
+    // 4. Compilation v2 : Instructions -> Bytecode Chunk
+    let compiler = aegis_core::vm::compiler::Compiler::new();
+    let chunk = compiler.compile(instructions);
+
+    // Debug: Décommenter pour voir le bytecode généré lors d'un simple run
+    // use aegis_core::vm::debug;
+    // debug::disassemble_chunk(&chunk, &format!("EXECUTION DE {}", filename));
+
+    // 5. Exécution VM
+    let mut vm = VM::new(chunk);
+    
+    // On pourrait passer 'args' à la VM ici dans le futur
+    vm.run()
 }
 
+// NOTE: Le REPL utilise encore l'interpréteur v1 pour l'instant
+// Car la VM v2 actuelle ne persiste pas l'état entre deux 'chunks' (run reset la VM)
 fn run_repl() {
     let global_env = Environment::new_global();
     let stdin = io::stdin();
     let mut input = String::new();
 
     loop {
-        // Affiche le prompt ">> "
         print!(">> ");
         io::stdout().flush().unwrap();
 
@@ -224,13 +238,11 @@ fn run_repl() {
                 if source == "exit" || source == "quit" { break; }
                 if source.is_empty() { continue; }
 
-                // Pour le REPL, on compile ligne par ligne
                 match compiler::compile(source) {
                     Ok(json_ast) => {
                         match loader::parse_block(&json_ast) {
                             Ok(instructions) => {
                                 for instr in instructions {
-                                    // On garde le même environnement à chaque tour de boucle !
                                     if let Err(e) = interpreter::execute(&instr, global_env.clone()) {
                                         println!("Erreur Runtime: {}", e);
                                     }
@@ -250,14 +262,13 @@ fn run_repl() {
     }
 }
 
+// NOTE: Les tests utilisent encore le moteur v1 pour l'instant
 fn run_tests(filename: &str) -> Result<(), String> {
     println!("🧪 Lancement des tests pour : {}", filename);
 
-    // 1. On charge et exécute le fichier normalement pour remplir le registre
     let content = fs::read_to_string(filename)
         .map_err(|e| format!("Impossible de lire {}: {}", filename, e))?;
 
-    // Compilation...
     let json_data = if filename.ends_with(".aeg") {
         compiler::compile(&content)?
     } else {
@@ -265,17 +276,14 @@ fn run_tests(filename: &str) -> Result<(), String> {
     };
     
     let instructions = loader::parse_block(&json_data)?;
-    let env = Environment::new_global(); // Environnement partagé
+    let env = Environment::new_global();
 
-    // Exécution du script (pour définir les fonctions et remplir __AEGIS_TESTS)
     for instr in instructions {
         if let Err(e) = interpreter::execute(&instr, env.clone()) {
             return Err(format!("Erreur lors du chargement du script : {}", e));
         }
     }
 
-    // 2. On récupère le registre __AEGIS_TESTS
-    // C'est une Value::List
     let tests_val = env.borrow().get_variable("__AEGIS_TESTS")
         .ok_or("Aucun test trouvé (Avez-vous importé 'stdlib/test.aeg' ?)")?;
 
@@ -290,16 +298,10 @@ fn run_tests(filename: &str) -> Result<(), String> {
     let mut passed = 0;
     let mut failed = 0;
 
-    // 3. On exécute chaque fonction de test isolément
     for (i, test_func) in tests.iter().enumerate() {
         print!("Test #{} ... ", i + 1);
         io::stdout().flush().unwrap();
 
-        // On utilise notre helper `apply_func` (il faut qu'il soit public ou accessible)
-        // Ou on recrée un petit scope enfant manuellement
-        
-        // Astuce : Pour capturer l'erreur sans crasher le runner, on utilise le Result de Rust
-        // On crée un appel de fonction sans arguments
         let res = interpreter::apply_func(test_func.clone(), vec![], env.clone());
 
         match res {

@@ -42,6 +42,23 @@ pub fn extend_registry(new_funcs: HashMap<String, NativeFn>) {
     }
 }
 
+pub fn get_all_names() -> Vec<String> {
+    // On s'assure que le registre est initialisé, sinon on le fait
+    if REGISTRY.get().is_none() {
+        init_registry();
+    }
+
+    let lock = REGISTRY.get().expect("Registry not initialized");
+    let reader = lock.read().expect("Registry lock poisoned");
+
+    let mut names: Vec<String> = reader.keys().cloned().collect();
+    
+    // TRES IMPORTANT : On trie pour garantir le déterminisme entre Compiler et VM
+    names.sort(); 
+    
+    names
+}
+
 mod io;
 mod time;
 mod random;
