@@ -1,22 +1,53 @@
 [package]
 name = "aegis"
-version = "0.1.0"
-edition = "2024"
+version = "0.2.0" # Bumped to 0.2.0 to reflect the new VM architecture (v2)
+edition = "2021"  # Using 2021 edition for stability (2024 is not yet stable)
+authors = ["Ethan Rucar <ethan.rucar@gmail.com>"]
+description = "A dynamic, interpreted programming language with a high-performance bytecode VM."
+license = "MIT"
+repository = "https://github.com/AegisProgrammingLanguage/AegisProgrammingLanguage"
+
+# ==============================================================================
+# DEPENDENCIES
+# ==============================================================================
 
 [dependencies]
+
+# --- Core & Serialization ---
+# Used for parsing AST and handling data structures
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+toml = "0.8"
+
+# --- CLI & Interaction ---
+# Command line argument parsing
+clap = { version = "4.4", features = ["derive"] }
+
+# --- Utilities ---
+# Random number generation
 rand = "0.8"
+# Logging infrastructure
 log = "0.4"
 env_logger = "0.10"
-reqwest = { version = "0.11", features = ["blocking", "json", "default-tls", "multipart"] }
-libloading = "0.8"
-toml = "0.8"
-clap = { version = "4.4", features = ["derive"] }
-zip = "0.6"
+# Filesystem walking and directory management
+walkdir = "2.5"
 dirs = "5.0"
-walkdir = "2.3"
+
+# --- Network & System ---
+# HTTP Client (Blocking for simplicity in scripts)
+# Note: reqwest 0.12 is available but requires migration. Sticking to 0.11 for stability.
+reqwest = { version = "0.11", features = ["blocking", "json", "default-tls", "multipart"] }
+# Dynamic library loading
+libloading = "0.8"
+
+# --- Assets & Packaging ---
+# Handling zip files and embedding stdlib into the binary
+zip = "0.6"
 rust-embed = "8.2"
+
+# ==============================================================================
+# LIBRARY & BINARY DEFINITIONS
+# ==============================================================================
 
 [lib]
 name = "aegis_core"
@@ -27,9 +58,24 @@ crate-type = ["rlib"]
 name = "aegis"
 path = "src/main.rs"
 
+# ==============================================================================
+# RELEASE PROFILE (OPTIMIZATIONS)
+# ==============================================================================
+
 [profile.release]
-opt-level = 3       # Optimisation maximale
-lto = "fat"         # Link Time Optimization (fusionne le code entre les modules)
-codegen-units = 1   # Compile tout en un seul bloc (plus lent à compiler, plus rapide à l'exécution)
-panic = "abort"     # Retire le code de "unwind" en cas de panique (allège le binaire)
-strip = true        # Retire les symboles de debug
+# Maximum optimization level (slower compile, faster runtime)
+opt-level = 3 
+
+# Link Time Optimization: performs optimizations across all crates
+lto = "fat"
+
+# Compile as a single code unit to allow for more aggressive optimization
+# (Disables parallel compilation for the final artifact)
+codegen-units = 1
+
+# Abort on panic immediately instead of unwinding the stack
+# Reduces binary size and removes exception handling overhead
+panic = "abort"
+
+# Strip debug symbols from the binary to reduce size
+strip = true
