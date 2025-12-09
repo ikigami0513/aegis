@@ -361,7 +361,17 @@ impl VM {
             }
             OpCode::GetGlobal => {
                 let idx = self.read_byte() as usize;
-                let val = self.globals[idx].clone();
+    
+                // Logique de récupération avec Fallback
+                let val = if idx < self.globals.len() && !matches!(self.globals[idx], Value::Null) {
+                    // Cas nominal : La valeur est déjà là
+                    self.globals[idx].clone()
+                } else {
+                    // Cas "Lazy" : On vérifie si c'est une nouvelle native
+                    self.resolve_lazy_native(idx)
+                        .ok_or_else(|| format!("Variable globale non définie (ID {})", idx))?
+                };
+
                 self.push(val);
             }
             OpCode::GetLocal => {
@@ -717,11 +727,18 @@ impl VM {
 
                 // 2. Essai : Global Environment (Fallback)
                 if val_to_push.is_none() {
-                    // On regarde dans la map des noms globaux
                     let global_id_opt = self.global_names.borrow().get(&name).cloned();
+                    
                     if let Some(id) = global_id_opt {
-                        // On récupère la valeur globale
-                        val_to_push = Some(self.globals[id as usize].clone());
+                        let idx = id as usize;
+                        
+                        // Même logique que GetGlobal
+                        if idx < self.globals.len() && !matches!(self.globals[idx], Value::Null) {
+                            val_to_push = Some(self.globals[idx].clone());
+                        } else {
+                            // Tentative de résolution native tardive
+                            val_to_push = self.resolve_lazy_native(idx);
+                        }
                     }
                 }
 
@@ -1101,5 +1118,32 @@ impl VM {
                 target
             )),
         }
+    }
+
+    fn resolve_lazy_native(&mut self, global_id: usize) -> Option<Value> {
+        // 1. Retrouver le nom à partir de l'ID
+        let name = {
+            let names = self.global_names.borrow();
+            names.iter()
+                // CORRECTION ICI : On déstructure explicitement la référence externe
+                .find(|&(_, &id)| id as usize == global_id)
+                .map(|(k, _)| k.clone())
+        }?; 
+
+        // 2. Chercher dans le registre natif
+        // on veut juste savoir si 'find' retourne Some(...)
+        if let Some(_) = crate::native::find(&name) {
+            let val = Value::Native(name);
+            
+            // 3. Mettre en cache dans les globales
+            if global_id >= self.globals.len() {
+                self.globals.resize(global_id + 1, Value::Null);
+            }
+            self.globals[global_id] = val.clone();
+            
+            return Some(val);
+        }
+
+        None
     }
 }

@@ -1,7 +1,7 @@
 [package]
 name = "aegis"
 version = "0.2.0" # Bumped to 0.2.0 to reflect the new VM architecture (v2)
-edition = "2021"  # Using 2021 edition for stability (2024 is not yet stable)
+edition = "2024"
 authors = ["Ethan Rucar <ethan.rucar@gmail.com>"]
 description = "A dynamic, interpreted programming language with a high-performance bytecode VM."
 license = "MIT"
