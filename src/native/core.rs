@@ -76,8 +76,9 @@ fn type_of(args: Vec<Value>) -> Result<Value, String> {
         // Pour l'instance, on récupère le nom dynamiquement
         Value::Instance(i) => {
             let borrow = i.borrow();
-            if let Value::Class { ref name, .. } = *borrow.class {
-                name.clone()
+            // On déstructure le Tuple Struct (Value::Class(rc_data))
+            if let Value::Class(rc_class) = &*borrow.class {
+                rc_class.name.clone() // On accède via le Rc
             } 
             else {
                 "instance".to_string()

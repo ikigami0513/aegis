@@ -1,9 +1,12 @@
+use std::collections::HashMap;
+
 use crate::ast::Value;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Chunk {
     pub code: Vec<u8>,
-    pub constants: Vec<Value>
+    pub constants: Vec<Value>,
+    pub locals_map: HashMap<u8, String>,
 }
 
 impl Chunk {
@@ -11,6 +14,7 @@ impl Chunk {
         Chunk {
             code: Vec::new(),
             constants: Vec::new(),
+            locals_map: HashMap::new(),
         }
     }
 

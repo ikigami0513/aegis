@@ -61,14 +61,20 @@ while (true) {
     print "--------------------"
     
     // 1. Affichage
-    grid.for_each(func(row) {
+    for (y, 0, HEIGHT, 1) {
+        var row = grid.at(y)
         var line = ""
-        row.for_each(func(cell) {
-            if (cell == 1) { line += "O " } 
-            else { line += ". " }
-        })
+        
+        for (x, 0, WIDTH, 1) {
+            var cell = row.at(x)
+            if (cell == 1) { 
+                line += "O " 
+            } else { 
+                line += ". " 
+            }
+        }
         print line
-    })
+    }
     
     // 2. Calcul de la prochaine génération
     var next_grid = []

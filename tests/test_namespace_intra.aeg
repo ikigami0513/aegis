@@ -1,0 +1,18 @@
+print "--- TEST NAMESPACE ---"
+
+namespace Maths {
+    var PI = 3.14159
+    
+    func square(x) {
+        return x * x
+    }
+    
+    func circle_area(r) {
+        // Accès explicite via le nom du Namespace (Global)
+        return Maths.PI * Maths.square(r)
+    }
+}
+
+print "PI : " + Maths.PI
+print "Carre de 4 : " + Maths.square(4)
+print "Aire cercle (r=10) : " + Maths.circle_area(10)

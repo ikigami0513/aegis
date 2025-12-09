@@ -1,0 +1,127 @@
+import "stdlib/random.aeg"
+import "stdlib/time.aeg"
+import "stdlib/math.aeg"
+
+print "--- AEGIS RPG BATTLE SIMULATOR ---"
+
+namespace Config {
+    var MAX_ROUNDS = 50
+    var CRIT_CHANCE = 20
+}
+
+class Entity(name, hp, atk, def) {
+    is_alive() { return this.hp > 0 }
+
+    take_damage(amount) {
+        var real_dmg = amount - this.def
+        if (real_dmg < 1) { real_dmg = 1 }
+        this.hp = this.hp - real_dmg
+        return real_dmg
+    }
+
+    attack(target) {
+        if (!target.is_alive()) { throw "Cible morte !" }
+        var dmg = this.atk
+        if (Random.int(0, 100) < Config.CRIT_CHANCE) {
+            dmg = dmg * 2
+            print "  >>> CRITIQUE ! <<<"
+        }
+        var inflicted = target.take_damage(dmg)
+        print this.name + " attaque " + target.name + " (" + inflicted + " dmg)"
+    }
+}
+
+class Hero(name, hp, atk, def) {
+    // --- METHODES COPIEES (Composition) ---
+    is_alive() { return this.hp > 0 }
+
+    take_damage(amount) {
+        var real_dmg = amount - this.def
+        if (real_dmg < 1) { real_dmg = 1 }
+        this.hp = this.hp - real_dmg
+        return real_dmg
+    }
+
+    attack(target) {
+        if (!target.is_alive()) { throw "Cible morte !" }
+        var dmg = this.atk
+        if (Random.int(0, 100) < Config.CRIT_CHANCE) {
+            dmg = dmg * 2
+            print "  >>> CRITIQUE HEROIQUE ! <<<"
+        }
+        var inflicted = target.take_damage(dmg)
+        print this.name + " attaque " + target.name + " (" + inflicted + " dmg)"
+    }
+    // --------------------------------------
+
+    init_inventory() {
+        this.inventory = { "potions": 2 }
+    }
+
+    use_potion() {
+        var count = this.inventory.get("potions")
+        if (count > 0) {
+            this.hp = this.hp + 50
+            this.inventory.insert("potions", count - 1)
+            print this.name + " utilise une potion (+50 HP). PV: " + this.hp
+        } else {
+            throw "Inventaire vide"
+        }
+    }
+}
+
+// --- SETUP ---
+var hero = new Hero("Arthur", 200, 25, 5)
+hero.init_inventory()
+
+var monsters = []
+for (i, 0, 5, 1) {
+    monsters.push(new Entity("Gobelin_" + i, 60, 10, 2))
+}
+
+print "Combat : " + hero.name + " vs " + len(monsters) + " monstres."
+
+// --- GAME LOOP ---
+var round = 0
+var battle_over = false
+
+while (!battle_over) {
+    if (round >= Config.MAX_ROUNDS) { break }
+    round++
+    print "\n--- ROUND " + round + " ---"
+
+    // Nettoyage des morts
+    var living_monsters = monsters.filter(func(m) { return m.is_alive() })
+
+    if (len(living_monsters) == 0) {
+        print "VICTOIRE !"
+        battle_over = true
+    } else {
+        // TOUR HERO
+        try {
+            if (hero.hp < 50) {
+                hero.use_potion()
+            } else {
+                var target = living_monsters.at(0)
+                hero.attack(target)
+            }
+        } catch (e) {
+            print "[Erreur Hero] " + e
+            // Fallback : Attaque normale si potion echoue
+            var target = living_monsters.at(0)
+            hero.attack(target)
+        }
+
+        // TOUR MONSTRES
+        living_monsters.for_each(func(m) {
+            if (hero.is_alive()) {
+                m.attack(hero)
+            }
+        })
+
+        if (!hero.is_alive()) {
+            print "DEFAITE..."
+            battle_over = true
+        }
+    }
+}

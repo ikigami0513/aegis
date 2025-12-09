@@ -2,8 +2,23 @@ use std::fmt;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
-use crate::ast::environment::SharedEnv;
+use crate::ast::Environment;
 use crate::chunk::Chunk;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FunctionData {
+    pub params: Vec<(String, Option<String>)>,
+    pub ret_type: Option<String>,
+    pub chunk: Chunk,
+    pub env: Option<Rc<RefCell<Environment>>>, // SharedEnv
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClassData {
+    pub name: String,
+    pub params: Vec<(String, Option<String>)>,
+    pub methods: HashMap<String, Value>,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct InstanceData {
@@ -19,12 +34,8 @@ pub enum Value {
     Boolean(bool),
     List(Rc<RefCell<Vec<Value>>>),
     Dict(Rc<RefCell<HashMap<String, Value>>>),
-    Function(Vec<(String, Option<String>)>, Option<String>, Chunk, Option<SharedEnv>),
-    Class {
-        name: String,
-        params: Vec<(String, Option<String>)>,
-        methods: HashMap<String, Value>, // Value::Function
-    },
+    Function(Rc<FunctionData>), 
+    Class(Rc<ClassData>),
     Instance(Rc<RefCell<InstanceData>>),
     Native(String),
     Null
@@ -54,15 +65,16 @@ impl fmt::Display for Value {
                 }
                 write!(f, "}}")
             },
-            Value::Function(params, _, _, _) => {
-                 let p_str: Vec<String> = params.iter().map(|p| p.0.clone()).collect();
+            Value::Function(rc_fn) => {
+                 let p_str: Vec<String> = rc_fn.params.iter().map(|p| p.0.clone()).collect();
                  write!(f, "<Function({})>", p_str.join(", "))
             },
-            Value::Class { name, .. } => write!(f, "<Class {}>", name),
+            Value::Class { 0: rc_class } => write!(f, "<Class {}>", rc_class.name),
             Value::Instance(i) => {
-                // On doit caster car i.class est une Value::Class
-                if let Value::Class { name, .. } = &*i.borrow().class {
-                     write!(f, "<Instance of {}>", name)
+                let borrow = i.borrow();
+                
+                if let Value::Class(rc_class) = &*borrow.class {
+                     write!(f, "<Instance of {}>", rc_class.name)
                 } else {
                      write!(f, "<Instance>")
                 }

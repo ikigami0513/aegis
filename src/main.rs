@@ -207,14 +207,14 @@ fn run_file(filename: &str) -> Result<(), String> {
 
     // 4. Compilation v2 : Instructions -> Bytecode Chunk
     let compiler = aegis_core::vm::compiler::Compiler::new();
-    let chunk = compiler.compile(instructions);
+    let (chunk, global_names) = compiler.compile(instructions);
 
     // Debug: Décommenter pour voir le bytecode généré lors d'un simple run
     // use aegis_core::vm::debug;
     // debug::disassemble_chunk(&chunk, &format!("EXECUTION DE {}", filename));
 
     // 5. Exécution VM
-    let mut vm = VM::new(chunk);
+    let mut vm = VM::new(chunk, global_names);
     
     // On pourrait passer 'args' à la VM ici dans le futur
     vm.run()

@@ -5,6 +5,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use crate::ast::value::FunctionData;
 use crate::ast::{InstanceData, Value};
 use crate::chunk::Chunk;
 use crate::opcode::OpCode;
@@ -25,9 +26,8 @@ struct CallFrame {
 impl CallFrame {
     fn chunk(&self) -> &Chunk {
         match &self.closure {
-            Value::Function(_, _, chunk, _) => chunk,
-            // Pour le script principal (ou classes), on devra gérer le cas
-            // Astuce: On peut wrapper le main script dans une Value::Function fictive
+            // On accède via le Rc
+            Value::Function(rc_fn) => &rc_fn.chunk,
             _ => panic!("CallFrame closure is not a function"),
         }
     }
@@ -44,12 +44,19 @@ pub struct VM {
     frames: Vec<CallFrame>,
     stack: Vec<Value>,
     globals: Vec<Value>,
+    global_names: Rc<RefCell<HashMap<String, u8>>>,
     handlers: Vec<ExceptionHandler>,
+    modules: HashMap<String, Value>,
 }
 
 impl VM {
-    pub fn new(main_chunk: Chunk) -> Self {
-        let main_func = Value::Function(vec![], None, main_chunk, None);
+    pub fn new(main_chunk: Chunk, global_names: Rc<RefCell<HashMap<String, u8>>>) -> Self {
+        let main_func = Value::Function(Rc::new(FunctionData {
+            params: vec![],
+            ret_type: None,
+            chunk: main_chunk,
+            env: None
+        }));
 
         // Le script principal est la première "fonction" exécutée
         let main_frame = CallFrame {
@@ -63,7 +70,9 @@ impl VM {
             stack: Vec::with_capacity(STACK_MAX),
             // On prépare de la place (256 slots globaux)
             globals: vec![Value::Null; 256],
+            global_names,
             handlers: Vec::new(),
+            modules: HashMap::new()
         };
 
         let natives = crate::native::get_all_names();
@@ -86,14 +95,17 @@ impl VM {
     }
 
     // Helper pour la pile
+    #[inline(always)]
     fn push(&mut self, value: Value) {
         self.stack.push(value);
     }
 
+    #[inline(always)]
     fn pop(&mut self) -> Value {
         self.stack.pop().expect("Stack underflow")
     }
 
+    #[inline(always)]
     fn step(&mut self) -> Result<bool, String> {
         // 1. Gestion des fins de Frames (Return implicite)
         // On vérifie d'abord si l'IP est au bout du code de la frame actuelle
@@ -185,6 +197,7 @@ impl VM {
         Ok(self.pop())
     }
 
+    #[inline(always)]
     fn execute_op(&mut self, op: OpCode) -> Result<bool, String> {
         // 2. EXECUTE
         match op {
@@ -541,77 +554,114 @@ impl VM {
             OpCode::MakeClosure => {
                 let function_val = self.pop();
                 
-                if let Value::Function(params, ret, chunk, _) = function_val {
+                if let Value::Function(rc_fn) = function_val {
                     let env_rc = Environment::new_global();
                     
-                    // --- DEBUT DE LA PHASE D'EXTRACTION (SCOPE LIMITE) ---
-                    // On récupère les infos nécessaires et on CLONE les noms pour libérer la frame ensuite
-                    let (parent_params, slot_offset) = {
+                    // 1. Extraction (Attention : il faut accéder aux champs du Rc)
+                    let (parent_params, parent_locals_map, slot_offset) = {
                         let frame = self.current_frame();
-                        if let Value::Function(pp, _, _, _) = &frame.closure {
-                            (Some(pp.clone()), frame.slot_offset)
+                        
+                        let pp = if let Value::Function(parent_rc) = &frame.closure {
+                            Some(parent_rc.params.clone()) // On clone le Vec<Params>
                         } else {
-                            (None, 0)
-                        }
-                    }; 
-                    // --- FIN DE L'EMPRUNT (frame est drop ici) ---
+                            None
+                        };
+                        
+                        let locals = frame.chunk().locals_map.clone();
+                        (pp, locals, frame.slot_offset)
+                    };
 
-                    // Maintenant self est libre, on peut accéder à self.stack
-                    if let Some(parent_params) = parent_params {
+                    // 2. Population Phase (Fill the environment)
+                    // SCOPE START: We create a block to contain the mutable borrow
+                    {
                         let mut env_inner = env_rc.borrow_mut();
-                        for (i, (name, _)) in parent_params.iter().enumerate() {
-                            let val = self.stack[slot_offset + i].clone();
-                            env_inner.variables.insert(name.clone(), val);
+
+                        // A. Capture Arguments
+                        if let Some(parent_params) = parent_params {
+                            for (i, (name, _)) in parent_params.iter().enumerate() {
+                                if slot_offset + i < self.stack.len() {
+                                    let val = self.stack[slot_offset + i].clone();
+                                    env_inner.variables.insert(name.clone(), val);
+                                }
+                            }
                         }
-                    }
+
+                        // B. Capture Locals (The fix for your "line" variable)
+                        for (idx, name) in parent_locals_map {
+                            let abs_index = slot_offset + (idx as usize);
+                            if abs_index < self.stack.len() {
+                                let val = self.stack[abs_index].clone();
+                                // We insert into the closure environment
+                                env_inner.variables.insert(name, val);
+                            }
+                        }
+                    } 
+                    // SCOPE END: 'env_inner' is dropped here. 'env_rc' is now free!
+
+                    // 3. Creation (On doit créer un NOUVEAU FunctionData)
+                    // Note: rc_fn.chunk est un clone couteux ici ? 
+                    // Non, Chunk contient des Vec. Idéalement Chunk devrait être dans un Rc aussi,
+                    // mais FunctionData est déjà un gros progrès.
                     
-                    let closure = Value::Function(
-                        params, 
-                        ret, 
-                        chunk, 
-                        Some(env_rc)
-                    );
+                    let new_data = FunctionData {
+                        params: rc_fn.params.clone(),
+                        ret_type: rc_fn.ret_type.clone(),
+                        chunk: rc_fn.chunk.clone(), // On clone le chunk (lourd, mais nécessaire pour l'instant)
+                        env: Some(env_rc)
+                    };
+
+                    let closure = Value::Function(Rc::new(new_data));
                     self.push(closure);
                 } else {
-                    panic!("MakeClosure sur non-fonction");
+                    panic!("MakeClosure on non-function value");
                 }
             },
 
             OpCode::GetFreeVar => {
                 let name_idx = self.read_byte();
-                // Note: read_byte utilise current_frame() en interne, mais l'emprunt se termine 
-                // dès que la fonction retourne le byte. C'est safe.
-                
-                // On doit ré-emprunter pour lire la constante string.
-                // Pour éviter de garder la frame, on clone la string tout de suite.
+                // Récupération du nom
                 let name = {
                     let frame = self.current_frame();
-                    frame.chunk().constants[name_idx as usize].to_string()
+                    if let Value::Function(rc_fn) = &frame.closure {
+                        rc_fn.chunk.constants[name_idx as usize].to_string()
+                    } else {
+                        panic!("Frame sans closure fonctionnelle ?");
+                    }
                 };
-                
+
                 let mut val_to_push = None;
 
-                // --- PHASE DE LECTURE ---
+                // 1. Essai : Closure Environment
                 {
                     let frame = self.current_frame();
-                    if let Value::Function(_, _, _, Some(env)) = &frame.closure {
-                        // On récupère la valeur et on la clone immédiatement
-                        // Cela permet de relâcher le borrow sur 'env' et 'frame' juste après
-                        if let Some(val) = env.borrow().variables.get(&name) {
-                            val_to_push = Some(val.clone());
+                    // On match le Rc
+                    if let Value::Function(rc_fn) = &frame.closure {
+                        if let Some(env) = &rc_fn.env { // on accède au champ .env du struct
+                            if let Some(val) = env.borrow().variables.get(&name) {
+                                val_to_push = Some(val.clone());
+                            }
                         }
                     }
                 }
-                // --- FIN DE L'EMPRUNT ---
 
-                // --- PHASE D'ECRITURE ---
+                // 2. Essai : Global Environment (Fallback)
+                if val_to_push.is_none() {
+                    // On regarde dans la map des noms globaux
+                    let global_id_opt = self.global_names.borrow().get(&name).cloned();
+                    if let Some(id) = global_id_opt {
+                        // On récupère la valeur globale
+                        val_to_push = Some(self.globals[id as usize].clone());
+                    }
+                }
+
+                // 3. Résultat
                 if let Some(val) = val_to_push {
                     self.push(val);
                 } else {
-                    // Fallback global ou null
-                    return Err(format!("Variable de closure introuvable : '{}'", name));
+                    return Err(format!("Variable introuvable (ni locale, ni globale) : '{}'", name));
                 }
             },
+
             OpCode::Dup => {
                 // On regarde le dernier élément sans le poper
                 let val = self.stack.last().expect("Stack underflow in DUP").clone();
@@ -633,6 +683,62 @@ impl VM {
             OpCode::Throw => {
                 let msg = self.pop();
                 return Err(format!("{}", msg)); // On utilise le mécanisme standard d'erreur Rust
+            },
+
+            OpCode::Import => {
+                let path_idx = self.read_byte();
+                let path = self.current_frame().chunk().constants[path_idx as usize].to_string();
+
+                // 1. CACHE CHECK
+                // If module is already loaded, we don't re-execute it (prevents side-effect duplication)
+                if self.modules.contains_key(&path) {
+                    self.push(Value::Null); // Import returns Null
+                } else {
+                    // 2. LOAD FILE
+                    // Reads relative to CWD. You might want to handle absolute paths or include paths later.
+                    let source = std::fs::read_to_string(&path)
+                        .map_err(|e| format!("Failed to import '{}': {}", path, e))?;
+
+                    // 3. FRONTEND (Source -> AST)
+                    // We reuse the v1 compiler pipeline to get instructions
+                    let json_ast = crate::compiler::compile(&source)?;
+                    let statements = crate::loader::parse_block(&json_ast)?;
+                    let instructions: Vec<crate::ast::Instruction> = statements.into_iter().map(|s| s.kind).collect();
+
+                    // 4. BACKEND (AST -> Bytecode)
+                    // CRITICAL: We create a compiler that SHARES the global_names with the main VM.
+                    // This ensures that 'namespace System' in the module gets the same Global ID 
+                    // as 'System' in the main script.
+                    let mut module_compiler = crate::vm::compiler::Compiler::new_with_globals(self.global_names.clone());
+                    
+                    // CRITICAL: We force GLOBAL scope (0) so 'var' and 'func' become SET_GLOBAL
+                    module_compiler.scope_depth = 0; 
+
+                    for instr in instructions {
+                        module_compiler.compile_instruction(instr);
+                    }
+                    
+                    // 5. EXECUTION
+                    let module_chunk = module_compiler.chunk;
+                    
+                    // Wrap module code in a function to execute it
+                    let module_func = Value::Function(Rc::new(FunctionData {
+                        params: vec![],
+                        ret_type: None,
+                        chunk: module_chunk,
+                        env: None
+                    }));
+                    
+                    // Run the module synchronously.
+                    // Its instructions (SET_GLOBAL) will write directly to 'self.globals'.
+                    self.run_callable_sync(module_func, vec![])?;
+
+                    // 6. UPDATE CACHE
+                    self.modules.insert(path.clone(), Value::Boolean(true));
+                    
+                    // 7. RETURN
+                    self.push(Value::Null);
+                }
             },
         }
 
@@ -656,14 +762,36 @@ impl VM {
         // 1. Instance Methods (POO) - Inchangé
         if let Value::Instance(inst) = &obj {
              let class_val = inst.borrow().class.clone();
-             if let Value::Class { methods, .. } = &*class_val {
-                 if let Some(method_val) = methods.get(&method_name) {
+             if let Value::Class(rc_class) = &*class_val {
+                 if let Some(method_val) = rc_class.methods.get(&method_name) {
                      self.stack[obj_idx] = method_val.clone();
                      self.stack.insert(obj_idx + 1, obj.clone()); 
                      self.call_value(method_val.clone(), arg_count + 1)?; 
                      return Ok(()); // On laisse la boucle principale continuer
                  }
              }
+        }
+
+        if let Value::Dict(d) = &obj {
+            // On regarde si la clé existe dans le dictionnaire
+            let field_val = d.borrow().get(&method_name).cloned();
+
+            if let Some(val) = field_val {
+                // Si la valeur trouvée est une fonction (ou native), on l'exécute
+                if matches!(val, Value::Function(..) | Value::Native(..)) {
+                    
+                    // On remplace le Dictionnaire sur la pile par la Fonction trouvée
+                    // Stack avant : [Dict, Arg1, Arg2...]
+                    // Stack après : [Func, Arg1, Arg2...]
+                    self.stack[obj_idx] = val.clone();
+                    
+                    // Note : Contrairement aux Instances, on n'injecte PAS 'this'.
+                    // Les fonctions de namespace sont considérées comme statiques.
+                    
+                    self.call_value(val, arg_count)?;
+                    return Ok(()); // L'appel est géré, on rend la main à la boucle principale
+                }
+            }
         }
 
         // 2. Native Methods
@@ -789,6 +917,7 @@ impl VM {
     }
 
     // Helper pour lire l'octet suivant et avancer IP
+    #[inline(always)]
     fn read_byte(&mut self) -> u8 {
         let frame = self.current_frame();
         let b = frame.chunk().code[frame.ip];
@@ -807,74 +936,47 @@ impl VM {
         let func_idx = self.stack.len() - 1 - arg_count;
 
         match &target {
-            // CAS 1 : Fonction Aegis (Lambda ou Nommée)
-            Value::Function(params, _, _, _closure_env) => {
-                if arg_count != params.len() {
-                    return Err(format!(
-                        "Arity mismatch: attendu {}, reçu {}",
-                        params.len(),
-                        arg_count
-                    ));
+            // CAS 1 : Fonction Aegis
+            Value::Function(rc_fn) => { 
+                 // On accède aux champs via rc_fn
+                 if arg_count != rc_fn.params.len() { 
+                    return Err(format!("Arity mismatch: attendu {}, reçu {}", rc_fn.params.len(), arg_count)); 
+                 }
+                 
+                 let frame = CallFrame {
+                     closure: target.clone(), // Clone le Rc (rapide !)
+                     ip: 0,
+                     slot_offset: func_idx + 1,
+                 };
+                 
+                 self.frames.push(frame);
+                 Ok(())
+            },
+
+            // CAS 2 : Classe
+            Value::Class(rc_class) => { // Déstructuration newtype
+                if arg_count != rc_class.params.len() { 
+                    return Err(format!("Constructeur {}: attendu {} args", rc_class.name, rc_class.params.len())); 
                 }
-
-                // Le parent du scope est soit la closure capturée, soit le scope global actuel (si on veut, mais ici on isole)
-                // Pour la VM, on n'a pas besoin de créer l'environnement tout de suite,
-                // c'est l'OpCode::GetLocal qui fera le lien avec la pile.
-                // MAIS pour les Globales/Closures, on garde l'env.
-
-                let frame = CallFrame {
-                    closure: target.clone(),
-                    ip: 0,
-                    slot_offset: func_idx + 1, // Les locales commencent après la fonction
-                };
-
-                self.frames.push(frame);
-                Ok(())
-            }
-
-            // CAS 2 : Instanciation de Classe
-            Value::Class {
-                name,
-                params,
-                methods: _,
-            } => {
-                if arg_count != params.len() {
-                    return Err(format!(
-                        "Constructeur {}: attendu {} args, reçu {}",
-                        name,
-                        params.len(),
-                        arg_count
-                    ));
-                }
-
-                // On clone la définition pour l'instance
-                // (On utilise target.clone() ici, mais comme target est déplacé dans le match,
-                // on doit le cloner avant ou le reconstruire.
-                // Astuce : On recrée une Value::Class à partir des refs qu'on a, ou on clone target au début)
-
-                // Pour simplifier (et éviter les soucis de borrow), on réutilise target
-                // mais il faut ruser car 'ref name' l'emprunte.
-                // Le plus simple : cloner 'target' AVANT le match dans l'appelant, ou ici :
-
-                // On va reconstruire l'objet Value::Class pour le mettre dans le Rc
-                // (C'est un peu coûteux mais sûr pour le borrow checker)
+                
+                // Ici target contient déjà un Rc<ClassData>, le cloner est rapide
                 let class_val_rc = Rc::new(target.clone());
-
+                
                 let mut fields = HashMap::new();
-                for (i, (param_name, _)) in params.iter().enumerate() {
+                for (i, (param_name, _)) in rc_class.params.iter().enumerate() {
                     let arg_val = self.stack[func_idx + 1 + i].clone();
                     fields.insert(param_name.clone(), arg_val);
                 }
-
+                
                 let instance = Value::Instance(Rc::new(RefCell::new(InstanceData {
                     class: class_val_rc,
-                    fields,
+                    fields
                 })));
-
+                
                 self.stack[func_idx] = instance;
                 self.stack.truncate(func_idx + 1);
                 Ok(())
-            }
+            },
 
             // CAS 3 : Fonction Native
             Value::Native(name) => {

@@ -2,15 +2,16 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
 
+use crate::ast::value::{ClassData, FunctionData};
 use crate::ast::{Instruction, Expression, Value};
 use crate::chunk::Chunk;
 use crate::opcode::OpCode;
 
 pub struct Compiler {
-    chunk: Chunk,
-    globals: Rc<RefCell<HashMap<String, u8>>>, 
-    locals: HashMap<String, u8>,
-    scope_depth: usize,
+    pub chunk: Chunk,
+    pub globals: Rc<RefCell<HashMap<String, u8>>>, 
+    pub locals: HashMap<String, u8>,
+    pub scope_depth: usize,
 }
 
 impl Compiler {
@@ -34,7 +35,7 @@ impl Compiler {
         }
     }
 
-    fn new_with_globals(globals: Rc<RefCell<HashMap<String, u8>>>) -> Self {
+    pub fn new_with_globals(globals: Rc<RefCell<HashMap<String, u8>>>) -> Self {
          Self {
             chunk: Chunk::new(),
             globals, 
@@ -43,11 +44,11 @@ impl Compiler {
         }
     }
 
-    pub fn compile(mut self, instruction: Vec<Instruction>) -> Chunk {
+    pub fn compile(mut self, instruction: Vec<Instruction>) -> (Chunk, Rc<RefCell<HashMap<String, u8>>>) {
         for instr in instruction {
             self.compile_instruction(instr);
         }
-        self.chunk
+        (self.chunk, self.globals)
     } 
 
     fn emit_byte(&mut self, byte: u8) {
@@ -290,8 +291,17 @@ impl Compiler {
                 func_compiler.emit_byte(null_idx);
                 func_compiler.emit_op(OpCode::Return);
 
+                for (name, idx) in &func_compiler.locals {
+                    func_compiler.chunk.locals_map.insert(*idx, name.clone());
+                }
+
                 let func_chunk = func_compiler.chunk;
-                let compiled_val = Value::Function(params.clone(), ret_type.clone(), func_chunk, None);
+                let compiled_val = Value::Function(Rc::new(FunctionData {
+                    params: params.clone(),
+                    ret_type: ret_type.clone(),
+                    chunk: func_chunk,
+                    env: None
+                }));
                 let const_idx = self.chunk.add_constant(compiled_val);
 
                 self.emit_op(OpCode::LoadConst);
@@ -302,7 +312,7 @@ impl Compiler {
         }
     }
 
-    fn compile_instruction(&mut self, instr: Instruction) {
+    pub fn compile_instruction(&mut self, instr: Instruction) {
         match instr {
             Instruction::Print(expr) => {
                 self.compile_expression(expr);
@@ -339,13 +349,17 @@ impl Compiler {
                     self.emit_byte(id);
                 }
             },
+
             Instruction::If { condition, body, else_body } => {
                 self.compile_if(condition, body, else_body);
             },
+
             Instruction::While { condition, body } => {
                 self.compile_while(condition, body);
             },
+            
             Instruction::Function { name, params, ret_type, body } => {
+                // 1. Compilation du corps de la fonction (Inchangé)
                 let mut func_compiler = Compiler::new_with_globals(self.globals.clone());
                 func_compiler.scope_depth = 1;
 
@@ -362,73 +376,112 @@ impl Compiler {
                 func_compiler.emit_byte(null_idx);
                 func_compiler.emit_op(OpCode::Return);
 
-                let func_chunk = func_compiler.chunk;
-                let compiled_val = Value::Function(
-                    params.clone(), 
-                    ret_type.clone(), 
-                    func_chunk, 
-                    None 
-                );
-                
+                for (name, idx) in &func_compiler.locals {
+                    func_compiler.chunk.locals_map.insert(*idx, name.clone());
+                }
 
+                let func_chunk = func_compiler.chunk;
+                let compiled_val = Value::Function(Rc::new(FunctionData {
+                    params: params.clone(),
+                    ret_type: ret_type.clone(),
+                    chunk: func_chunk,
+                    env: None
+                }));
+
+                // 2. Chargement de la fonction sur la pile (Inchangé)
                 let const_idx = self.chunk.add_constant(compiled_val);
                 self.emit_op(OpCode::LoadConst);
                 self.emit_byte(const_idx);
-
+                
+                // On la transforme en closure (pour capturer l'env si besoin)
                 self.emit_op(OpCode::MakeClosure);
 
-                let global_id = self.resolve_global(&name);
-                self.emit_op(OpCode::SetGlobal);
-                self.emit_byte(global_id);
+                // 3. --- MODIFICATION : Stockage (Global ou Local) ---
+                if self.scope_depth > 0 {
+                    // Cas Namespace ou Fonction imbriquée : C'est une locale
+                    let idx = self.locals.len() as u8;
+                    self.locals.insert(name.clone(), idx);
+                    // La fonction est déjà sur la pile, elle devient la variable locale 'name'.
+                    // On ne fait rien d'autre (comme pour SetLocal implicite).
+                } else {
+                    // Cas Script Principal : C'est une globale
+                    let global_id = self.resolve_global(&name);
+                    self.emit_op(OpCode::SetGlobal);
+                    self.emit_byte(global_id);
+                }
             },
 
             Instruction::ForRange { var_name, start, end, step, body } => {
-                // 1. Initialiser la variable 'i'
-                self.compile_expression(start);
-                // On considère que c'est une variable locale dans ce scope temporaire
-                // (Simplification : on utilise set_variable scope courant)
-                if self.scope_depth > 0 {
-                    // Logique locale (complexe à implémenter ici sans context local complet)
-                    // Pour simplifier, traitons-le comme une globale ou ajoutons aux locals
-                    // TODO: Gérer l'ajout dynamique de locale
-                    let id = self.resolve_global(&var_name); // Fallback global pour l'exemple
-                    self.emit_op(OpCode::SetGlobal); 
-                    self.emit_byte(id);
-                } else {
-                    let id = self.resolve_global(&var_name);
-                    self.emit_op(OpCode::SetGlobal); 
-                    self.emit_byte(id);
-                }
+                // 1. Initialisation : On calcule la valeur de départ
+                self.compile_expression(start); // Pile : [..., start_val]
 
-                // 2. Début de boucle
+                // 2. Déclaration de la variable de boucle
+                let loop_var_idx = if self.scope_depth > 0 {
+                    // C'est une variable LOCALE
+                    // L'index est le sommet actuel de la pile (là où est start_val)
+                    // ATTENTION : On utilise locals.len() AVANT d'insérer, ce qui correspond
+                    // à l'index de la valeur qu'on vient de pousser (car len a augmenté implicitement via la stack).
+                    let idx = self.locals.len() as u8;
+                    self.locals.insert(var_name.clone(), idx);
+                    idx
+                } else {
+                    let idx = self.resolve_global(&var_name);
+                    self.emit_op(OpCode::SetGlobal);
+                    self.emit_byte(idx);
+                    idx
+                };
+                let is_local = self.scope_depth > 0;
+
                 let loop_start = self.chunk.code.len();
 
                 // 3. Condition : i < end
-                // GET i
-                let id = self.resolve_global(&var_name);
-                self.emit_op(OpCode::GetGlobal); self.emit_byte(id);
-                // GET end (On devrait peut-être stocker 'end' dans une var temporaire pour éviter de le recalculer)
+                if is_local {
+                    self.emit_op(OpCode::GetLocal); self.emit_byte(loop_var_idx);
+                } else {
+                    self.emit_op(OpCode::GetGlobal); self.emit_byte(loop_var_idx);
+                }
+                
                 self.compile_expression(end);
-                self.emit_op(OpCode::Less); // ou NotEqual selon logique
+                self.emit_op(OpCode::Less); 
 
                 let exit_jump = self.emit_jump(OpCode::JumpIfFalse);
                 self.emit_op(OpCode::Pop);
 
                 // 4. Corps
-                for stmt in body {
-                    self.compile_instruction(stmt.kind);
-                }
+                self.compile_scope(body);
 
                 // 5. Incrément : i = i + step
-                self.emit_op(OpCode::GetGlobal); self.emit_byte(id);
+                if is_local {
+                    self.emit_op(OpCode::GetLocal); self.emit_byte(loop_var_idx);
+                } else {
+                    self.emit_op(OpCode::GetGlobal); self.emit_byte(loop_var_idx);
+                }
+                
                 self.compile_expression(step);
                 self.emit_op(OpCode::Add);
-                self.emit_op(OpCode::SetGlobal); self.emit_byte(id);
+                
+                if is_local {
+                    self.emit_op(OpCode::SetLocal); // Ici c'est OK car la variable existe déjà
+                    self.emit_byte(loop_var_idx);
+                    self.emit_op(OpCode::Pop);
+                } else {
+                    self.emit_op(OpCode::SetGlobal); 
+                    self.emit_byte(loop_var_idx);
+                }
 
                 // 6. Loop
                 self.emit_loop(loop_start);
                 self.patch_jump(exit_jump);
                 self.emit_op(OpCode::Pop);
+                
+                // 7. Nettoyage du scope local (Important !)
+                // Si c'était une locale, à la fin du for, la variable 'j' doit être retirée de la pile
+                if is_local {
+                    // On enlève la variable de la pile d'exécution
+                    self.emit_op(OpCode::Pop);
+                    // On l'enlève de la table des symboles du compilateur pour les instructions suivantes
+                    self.locals.remove(&var_name);
+                }
             },
 
             Instruction::Switch { value, cases, default } => {
@@ -446,7 +499,7 @@ impl Compiler {
                     self.emit_op(OpCode::Pop); // Pop le booléen true
                     
                     // Body
-                    for stmt in case_body { self.compile_instruction(stmt.kind); }
+                    self.compile_scope(case_body);
                     
                     // Si on a exécuté un cas, on saute à la fin (break implicite)
                     end_jumps.push(self.emit_jump(OpCode::Jump));
@@ -456,7 +509,7 @@ impl Compiler {
                 }
 
                 // Default
-                for stmt in default { self.compile_instruction(stmt.kind); }
+                self.compile_scope(default);
 
                 // Patch de toutes les sorties
                 for jump in end_jumps { self.patch_jump(jump); }
@@ -499,15 +552,21 @@ impl Compiler {
                     method_compiler.emit_byte(null_idx);
                     method_compiler.emit_op(OpCode::Return);
 
-                    let method_val = Value::Function(actual_params, None, method_compiler.chunk, None);
+                    let method_val = Value::Function(Rc::new(FunctionData {
+                        params: actual_params,
+                        ret_type: None,
+                        chunk: method_compiler.chunk,
+                        env: None
+                    }));
+
                     compiled_methods.insert(m_name, method_val);
                 }
 
-                let class_val = Value::Class {
+                let class_val = Value::Class(Rc::new(ClassData {
                     name: def.name.clone(),
                     params: def.params.clone(),
                     methods: compiled_methods,
-                };
+                }));
 
                 let const_idx = self.chunk.add_constant(class_val);
                 self.emit_op(OpCode::LoadConst);
@@ -535,9 +594,7 @@ impl Compiler {
                 let catch_jump = self.emit_jump(OpCode::SetupExcept);
 
                 // 2. Compile Try Block
-                for stmt in try_body {
-                    self.compile_instruction(stmt.kind);
-                }
+                self.compile_scope(try_body);
 
                 // 3. Pop Exception (Success Path)
                 self.emit_op(OpCode::PopExcept);
@@ -558,9 +615,7 @@ impl Compiler {
                 // La valeur est déjà sur la pile, c'est notre variable locale.
                 // ------------------------
 
-                for stmt in catch_body {
-                    self.compile_instruction(stmt.kind);
-                }
+                self.compile_scope(catch_body);
                 
                 // 6. Cleanup (OPTIONNEL MAIS RECOMMANDÉ)
                 // À la fin du catch, on retire la variable 'e' de la pile pour revenir à l'état propre
@@ -580,8 +635,97 @@ impl Compiler {
                 self.emit_op(OpCode::Throw);
             },
 
-            Instruction::Import(_) => todo!(),
-            Instruction::Namespace { .. } => todo!(),
+            Instruction::Namespace { name, body } => {
+                // 1. RÉSERVATION DU NOM (Crucial pour l'auto-référence "Maths.square")
+                // On définit où sera stocké le namespace final AVANT de compiler son contenu.
+                let global_id = if self.scope_depth == 0 {
+                    Some(self.resolve_global(&name))
+                } else {
+                    None
+                };
+
+                let local_idx = if self.scope_depth > 0 {
+                    let idx = self.locals.len() as u8;
+                    // On "réserve" le slot local. Attention: la valeur n'y est pas encore !
+                    // Mais cela permet à 'resolve_local' de savoir que la variable existe.
+                    self.locals.insert(name.clone(), idx);
+                    Some(idx)
+                } else {
+                    None
+                };
+
+                // 2. COMPILATION DU CORPS (IIFE Pattern)
+                let mut ns_compiler = Compiler::new_with_globals(self.globals.clone());
+                ns_compiler.scope_depth = 1; 
+
+                for stmt in body {
+                    ns_compiler.compile_instruction(stmt.kind);
+                }
+
+                // 3. CONSTRUCTION DU DICTIONNAIRE (Exports)
+                let exports: Vec<(String, u8)> = ns_compiler.locals.iter()
+                    .map(|(k, v)| (k.clone(), *v))
+                    .collect();
+                
+                let count = exports.len();
+
+                for (var_name, slot_idx) in exports {
+                    let key_idx = ns_compiler.chunk.add_constant(Value::String(var_name));
+                    ns_compiler.emit_op(OpCode::LoadConst);
+                    ns_compiler.emit_byte(key_idx);
+                    ns_compiler.emit_op(OpCode::GetLocal);
+                    ns_compiler.emit_byte(slot_idx);
+                }
+
+                ns_compiler.emit_op(OpCode::MakeDict);
+                ns_compiler.emit_byte((count * 2) as u8);
+                ns_compiler.emit_op(OpCode::Return);
+
+                for (name, idx) in &ns_compiler.locals {
+                    ns_compiler.chunk.locals_map.insert(*idx, name.clone());
+                }
+
+                // 4. EMBALLAGE (Closure)
+                let ns_chunk = ns_compiler.chunk;
+                let ns_func = Value::Function(Rc::new(FunctionData {
+                    params: vec![],
+                    ret_type: None,
+                    chunk: ns_chunk,
+                    env: None
+                }));
+                
+                let const_idx = self.chunk.add_constant(ns_func);
+                self.emit_op(OpCode::LoadConst);
+                self.emit_byte(const_idx);
+                self.emit_op(OpCode::MakeClosure);
+
+                self.emit_op(OpCode::Call);
+                self.emit_byte(0);
+
+                // 5. STOCKAGE FINAL
+                // On utilise les ID calculés à l'étape 1
+                if let Some(id) = global_id {
+                    self.emit_op(OpCode::SetGlobal);
+                    self.emit_byte(id);
+                } else if let Some(idx) = local_idx {
+                    // Pour une locale, la valeur est maintenant sur le sommet de la pile.
+                    // SetLocal la copie dans le slot réservé.
+                    self.emit_op(OpCode::SetLocal);
+                    self.emit_byte(idx);
+                    // Namespace est une instruction, pas une expression, donc on pop le résultat de la pile
+                    // (La valeur est maintenant en sécurité dans la variable locale)
+                    self.emit_op(OpCode::Pop); 
+                }
+            },
+
+            Instruction::Import(path) => {
+                // Store the path as a constant string
+                let path_idx = self.chunk.add_constant(Value::String(path));
+                
+                // Emit the IMPORT opcode
+                self.emit_op(OpCode::Import);
+                self.emit_byte(path_idx);
+            },
         }
     }
 
@@ -618,11 +762,8 @@ impl Compiler {
 
         // 3. Compile 'then' block
         self.emit_op(OpCode::Pop); // Clean up condition result (optional optimization)
-        for stmt in then_body {
-            // Note: In v2, we should probably work with Instructions directly, 
-            // but for now let's map statement.kind
-            self.compile_instruction(stmt.kind);
-        }
+
+        self.compile_scope(then_body);
 
         // 4. Jump over 'else'
         let else_jump = self.emit_jump(OpCode::Jump);
@@ -633,9 +774,7 @@ impl Compiler {
         self.emit_op(OpCode::Pop); // Clean up condition for the else path
 
         // 6. Compile 'else' block
-        for stmt in else_body {
-            self.compile_instruction(stmt.kind);
-        }
+        self.compile_scope(else_body);
 
         // 7. Patch the second jump (target is end)
         self.patch_jump(else_jump);
@@ -668,9 +807,7 @@ impl Compiler {
         self.emit_op(OpCode::Pop); // Nettoyer la condition de la pile
 
         // 4. Compiler le corps
-        for stmt in body {
-            self.compile_instruction(stmt.kind);
-        }
+        self.compile_scope(body);
 
         // 5. Remonter au début !
         self.emit_loop(loop_start);
@@ -678,5 +815,26 @@ impl Compiler {
         // 6. Patcher le saut de sortie
         self.patch_jump(exit_jump);
         self.emit_op(OpCode::Pop); // Nettoyer la condition finale
+    }
+
+    // Compile une liste d'instructions en gérant le nettoyage des variables locales (Scope)
+    fn compile_scope(&mut self, statements: Vec<crate::ast::Statement>) {
+        let initial_locals_count = self.locals.len();
+        
+        for stmt in statements {
+            self.compile_instruction(stmt.kind);
+        }
+        
+        let final_locals_count = self.locals.len();
+        let vars_created = final_locals_count - initial_locals_count;
+        
+        // 1. On nettoie la pile d'exécution (Runtime)
+        for _ in 0..vars_created {
+            self.emit_op(OpCode::Pop);
+        }
+        
+        // 2. On nettoie la table des symboles (Compile-time)
+        // On retire toutes les variables qui ont un index >= initial_locals_count
+        self.locals.retain(|_, &mut idx| idx < initial_locals_count as u8);
     }
 }

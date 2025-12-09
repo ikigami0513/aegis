@@ -71,6 +71,8 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
         OpCode::SetupExcept => jump_instruction("SETUP_EXCEPT", 1, chunk, offset),
         OpCode::PopExcept => simple_instruction("POP_EXCEPT", offset),
         OpCode::Throw => simple_instruction("THROW", offset),
+
+        OpCode::Import => constant_instruction("IMPORT", chunk, offset),
     }
 }
 

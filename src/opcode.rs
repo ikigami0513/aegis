@@ -56,6 +56,8 @@ pub enum OpCode {
     SetupExcept, // Démarre un bloc Try (pousse un handler)
     PopExcept,   // Fin du bloc Try avec succès (retire le handler)
     Throw,
+
+    Import,
 }
 
 impl From<u8> for OpCode {

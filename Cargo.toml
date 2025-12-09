@@ -26,3 +26,10 @@ crate-type = ["rlib"]
 [[bin]]
 name = "aegis"
 path = "src/main.rs"
+
+[profile.release]
+opt-level = 3       # Optimisation maximale
+lto = "fat"         # Link Time Optimization (fusionne le code entre les modules)
+codegen-units = 1   # Compile tout en un seul bloc (plus lent à compiler, plus rapide à l'exécution)
+panic = "abort"     # Retire le code de "unwind" en cas de panique (allège le binaire)
+strip = true        # Retire les symboles de debug
