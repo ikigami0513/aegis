@@ -35,7 +35,7 @@ Aegis comes with a comprehensive Standard Library out of the box:
 
 ## A Taste of Aegis
 
-Here is a glimpse of what Aegis code looks like:
+Here is a glimpse of what Aegis code looks like: 
 
 ```aegis
 import "stdlib/http.aeg"
