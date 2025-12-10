@@ -242,18 +242,40 @@ impl<'a> Lexer<'a> {
     }
 
     fn read_string(&mut self) -> Token {
-        self.chars.next(); 
+        self.chars.next(); // On consomme le guillemet ouvrant "
         let mut s = String::new();
+        
         while let Some(&c) = self.chars.peek() {
-            if c == '"' { 
-                self.chars.next(); 
-                return Token {
-                    kind: TokenKind::StringLiteral(s), line: self.line
-                };
+            match c {
+                '"' => { 
+                    self.chars.next(); // On consomme le guillemet fermant "
+                    return Token {
+                        kind: TokenKind::StringLiteral(s), 
+                        line: self.line
+                    };
+                },
+                '\\' => {
+                    // C'est un caractère d'échappement !
+                    self.chars.next(); // On consomme le \
+                    
+                    if let Some(escaped) = self.chars.next() {
+                        match escaped {
+                            'n' => s.push('\n'), // Nouvelle ligne
+                            'r' => s.push('\r'), // Retour chariot
+                            't' => s.push('\t'), // Tabulation
+                            '"' => s.push('"'),  // Guillemet échappé
+                            '\\' => s.push('\\'), // Backslash échappé
+                            // Tu peux ajouter d'autres cas ici (ex: '0' pour null byte)
+                            _ => s.push(escaped), // Par défaut on garde le char (ex: \a -> a)
+                        }
+                    }
+                },
+                _ => {
+                    s.push(self.chars.next().unwrap());
+                }
             }
-            s.push(self.chars.next().unwrap());
         }
-        panic!("Unterminated string");
+        panic!("Unterminated string at line {}", self.line);
     }
 
     fn read_number(&mut self) -> Token {

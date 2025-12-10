@@ -1,0 +1,42 @@
+import "stdlib/socket.aeg"
+import "stdlib/time.aeg"
+
+var HOST = "127.0.0.1"
+var PORT = 8080
+
+var server = Socket.listen(HOST, PORT)
+print "HTTP Server running on http://" + HOST + ":" + PORT
+
+while (true) {
+    var client = Socket.accept(server)
+    
+    // Read the HTTP Request
+    var request = Socket.read(client, 1024)
+    
+    // Simple parsing to get the path (e.g., "GET /home HTTP/1.1")
+    var parts = request.split(" ")
+    if (parts.len() > 1) {
+        var method = parts.at(0)
+        var path = parts.at(1)
+        print method + " " + path
+    
+        // Build HTTP Response Body
+        var body = "<h1>Hello from Aegis!</h1>"
+        body += "<p>You requested: " + path + "</p>"
+        
+        // Build Headers
+        var response = "HTTP/1.1 200 OK\r\n"
+        response += "Content-Type: text/html; charset=utf-8\r\n"
+        response += "Content-Length: " + body.len() + "\r\n"
+        response += "Connection: close\r\n"
+        response += "\r\n" // End of headers
+        
+        // Combine
+        response += body
+    
+        Socket.write(client, response)
+    }
+    
+    // Close the connection
+    Socket.close(client)
+}

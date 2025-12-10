@@ -1,0 +1,32 @@
+namespace Socket {
+    
+    // Crée un serveur (Listener)
+    func listen(host, port) {
+        return sock_bind(host, port)
+    }
+
+    // Attend une connexion client
+    // Retourne un ID de client (Stream)
+    func accept(server_id) {
+        return sock_accept(server_id)
+    }
+
+    // Connecte à un serveur (Client)
+    func connect(host, port) {
+        return sock_connect(host, port)
+    }
+
+    // Lit 'size' octets
+    func read(client_id, size) {
+        return sock_read(client_id, size)
+    }
+
+    // Écrit une chaine
+    func write(client_id, data) {
+        return sock_write(client_id, data)
+    }
+
+    func close(id) {
+        return sock_close(id)
+    }
+}

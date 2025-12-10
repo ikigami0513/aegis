@@ -43,6 +43,7 @@
     - [Network (HTTP)](stdlib/http.md)
     - [Data Handling](stdlib/data.md)
     - [Math & Random](stdlib/math.md)
+    - [Socket (TCP)](stdlib/socket.md)
     - [Testing Framework](stdlib/test.md)
 
 - [Advanced Topics](advanced/README.md)
