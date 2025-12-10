@@ -47,6 +47,8 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn tokenize(&mut self) -> Vec<Token> {
+        self.handle_shebang();
+
         let mut tokens = Vec::new();
         while let Some(&c) = self.chars.peek() {
             match c {
@@ -326,6 +328,24 @@ impl<'a> Lexer<'a> {
         Token {
             kind,
             line: self.line
+        }
+    }
+
+    fn handle_shebang(&mut self) {
+        // On ne fait ça que si on est au tout début (mais ici on regarde le peekable)
+        // Comme on ne peut pas facilement peek(0) et peek(1) avec un itérateur simple,
+        // on va cloner l'itérateur juste pour vérifier.
+        
+        let mut lookahead = self.chars.clone();
+        
+        if let Some('#') = lookahead.next() {
+            if let Some('!') = lookahead.next() {
+                // C'est un shebang ! On consomme la vraie ligne.
+                while let Some(&c) = self.chars.peek() {
+                    if c == '\n' { break; } // On s'arrête AU saut de ligne (qui sera géré par la boucle principale)
+                    self.chars.next();
+                }
+            }
         }
     }
 }

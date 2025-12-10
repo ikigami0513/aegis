@@ -1,0 +1,2 @@
+#!/usr/bin/env aegis
+print "Shebang ignoré, ça marche !"

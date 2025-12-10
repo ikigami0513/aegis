@@ -1,12 +1,11 @@
 use aegis_core::{compiler, loader, native, plugins};
 use clap::{Parser, Subcommand};
+use rustyline::DefaultEditor;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::io::Write;
-use std::{fs, io};
+use std::fs;
 use serde_json::Value as JsonValue;
 use std::path::Path;
-// use std::time::Instant; // Décommenter si tu veux mesurer le temps d'exécution
 
 mod package_manager;
 
@@ -216,9 +215,6 @@ fn run_file(filename: &str) -> Result<(), String> {
 }
 
 fn run_repl() {
-    let stdin = io::stdin();
-    let mut input = String::new();
-
     // 1. Initialisation de l'environnement partagé
     // On crée la table des noms globaux qui sera partagée entre le compilateur et la VM
     let global_names = std::rc::Rc::new(std::cell::RefCell::new(HashMap::new()));
@@ -231,17 +227,17 @@ fn run_repl() {
     println!("Aegis v0.2.0 REPL");
     println!("Type 'exit' to quit.");
 
+    let mut rl = DefaultEditor::new().unwrap();
+
     loop {
-        print!(">> ");
-        io::stdout().flush().unwrap();
+        let readline = rl.readline(">> ");
 
-        input.clear();
-        match stdin.read_line(&mut input) {
-            Ok(_) => {
-                let source = input.trim();
+        match readline {
+            Ok(line) => {
+                rl.add_history_entry(line.as_str()).unwrap();
+                let source = line.trim();
                 if source == "exit" || source == "quit" { break; }
-                if source.is_empty() { continue; }
-
+                
                 // --- PIPELINE v2 ---
 
                 // A. Compilation v1 (Source -> JSON AST)
