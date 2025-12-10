@@ -1146,4 +1146,28 @@ impl VM {
 
         None
     }
+
+    /// Injecte et exécute un nouveau Chunk dans la VM existante (pour le REPL)
+    pub fn execute_chunk(&mut self, chunk: Chunk) -> Result<(), String> {
+        // On crée une fonction fictive pour emballer ce chunk
+        let script_func = Value::Function(Rc::new(crate::ast::value::FunctionData {
+            params: vec![],
+            ret_type: None,
+            chunk,
+            env: None
+        }));
+
+        // On crée une nouvelle Frame au niveau 0 (comme le main)
+        let frame = CallFrame {
+            closure: script_func,
+            ip: 0,
+            slot_offset: 0,
+        };
+
+        // On l'ajoute à la pile d'appels
+        self.frames.push(frame);
+
+        // Et on lance l'exécution !
+        self.run()
+    }
 }

@@ -1,5 +1,4 @@
-use aegis_core::{compiler, interpreter, loader, native, plugins};
-use aegis_core::ast::environment::Environment;
+use aegis_core::{compiler, loader, native, plugins};
 use clap::{Parser, Subcommand};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -156,7 +155,7 @@ fn main() -> Result<(), String> {
         }
 
         Some(Commands::Repl) | None => {
-            println!("Aegis v2.0 - Mode Interactif (Legacy v1 Engine)");
+            println!("Aegis v2.0 - REPL");
             println!("Tapez 'exit' ou 'quit' pour quitter.");
             run_repl();
             Ok(())
@@ -221,12 +220,21 @@ fn run_file(filename: &str) -> Result<(), String> {
     vm.run()
 }
 
-// NOTE: Le REPL utilise encore l'interpréteur v1 pour l'instant
-// Car la VM v2 actuelle ne persiste pas l'état entre deux 'chunks' (run reset la VM)
 fn run_repl() {
-    let global_env = Environment::new_global();
     let stdin = io::stdin();
     let mut input = String::new();
+
+    // 1. Initialisation de l'environnement partagé
+    // On crée la table des noms globaux qui sera partagée entre le compilateur et la VM
+    let global_names = std::rc::Rc::new(std::cell::RefCell::new(HashMap::new()));
+    
+    // 2. Initialisation de la VM (à vide)
+    // On crée un chunk vide juste pour initialiser la VM
+    let empty_chunk = aegis_core::chunk::Chunk::new();
+    let mut vm = VM::new(empty_chunk, global_names.clone(), vec![]);
+
+    println!("Aegis v0.2.0 REPL");
+    println!("Type 'exit' to quit.");
 
     loop {
         print!(">> ");
@@ -239,24 +247,40 @@ fn run_repl() {
                 if source == "exit" || source == "quit" { break; }
                 if source.is_empty() { continue; }
 
+                // --- PIPELINE v2 ---
+
+                // A. Compilation v1 (Source -> JSON AST)
                 match compiler::compile(source) {
                     Ok(json_ast) => {
+                        // B. Loader (JSON -> Instructions)
                         match loader::parse_block(&json_ast) {
-                            Ok(instructions) => {
-                                for instr in instructions {
-                                    if let Err(e) = interpreter::execute(&instr, global_env.clone()) {
-                                        println!("Erreur Runtime: {}", e);
-                                    }
+                            Ok(statements) => {
+                                // Conversion Statement -> Instruction
+                                let instructions: Vec<_> = statements.into_iter().map(|s| s.kind).collect();
+
+                                // C. Compilation v2 (Instructions -> Bytecode)
+                                // IMPORTANT : On utilise 'new_with_globals' pour que le compilateur
+                                // connaisse les variables définies aux lignes précédentes !
+                                let mut repl_compiler = aegis_core::vm::compiler::Compiler::new_with_globals(global_names.clone());
+                                
+                                // On force le scope global pour que 'var x = 1' soit persistant (SetGlobal)
+                                repl_compiler.scope_depth = 0; 
+                                
+                                let (chunk, _) = repl_compiler.compile(instructions);
+
+                                // D. Exécution (Injection dans la VM existante)
+                                if let Err(e) = vm.execute_chunk(chunk) {
+                                    println!("Runtime Error: {}", e);
                                 }
                             },
-                            Err(e) => println!("Erreur Loader: {}", e)
+                            Err(e) => println!("Loader Error: {}", e)
                         }
                     },
-                    Err(e) => println!("Erreur Syntaxe: {}", e)
+                    Err(e) => println!("Syntax Error: {}", e)
                 }
             }
             Err(error) => {
-                println!("Erreur lecture: {}", error);
+                println!("IO Error: {}", error);
                 break;
             }
         }

@@ -1,10 +1,8 @@
 # The REPL
 
-### ⚠️ Status Note (v0.2.0)
+### Status Note (v0.2.0)
 
-The Interactive REPL is currently under active migration to the new `v0.2.0` Bytecode Virtual Machine.
-
-In the current release, the REPL relies on the legacy engine or might be temporarily unavailable. For reliable results and performance, we strongly recommend writing your code in `.aeg` files and using the `aegis run` command.
+The Interactive REPL is now functional with the new `v0.2.0` Bytecode Virtual Machine.
 
 ## What is a REPL?
 
