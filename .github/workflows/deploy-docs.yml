@@ -1,0 +1,39 @@
+name: Deploy Documentation
+
+on:
+  push:
+    branches:
+      - master # Ou 'main' selon ta branche principale
+    paths:
+      - 'aegis-docs/**' # Ne déclenche que si on touche à la doc
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+
+      - name: Install mdBook
+        run: cargo install mdbook
+
+      - name: Build Book
+        run: |
+          cd aegis-docs
+          mdbook build
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./aegis-docs/book
+          
