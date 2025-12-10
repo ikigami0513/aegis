@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-9e7bdb3a.js";
+            window.path_to_searchindex_js = "../searchindex-d985e5a0.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-621ee4a4.js"></script>
@@ -218,8 +218,8 @@ var c = new Cat("Luna")
 c.speak() // "Meow!" (The parent's method is ignored)
 c.sleep() // "Luna is sleeping." (Still uses the parent's method)
 </code></pre>
-<p>The Prototype Chain</p>
-<h2 id="aegis-supports-multi-level-inheritance-a-class-can-inherit-from-a-class-that-inherits-from-another-class"><a class="header" href="#aegis-supports-multi-level-inheritance-a-class-can-inherit-from-a-class-that-inherits-from-another-class">Aegis supports multi-level inheritance. A class can inherit from a class that inherits from another class.</a></h2>
+<h2 id="the-prototype-chain"><a class="header" href="#the-prototype-chain">The Prototype Chain</a></h2>
+<p>Aegis supports multi-level inheritance. A class can inherit from a class that inherits from another class.</p>
 <pre><code class="language-aegis">class LivingBeing(age) { 
     is_alive() { return true } 
 }
@@ -238,6 +238,49 @@ var d = new Dog("Buddy", 5, "Golden")
 print d.is_alive() // true
 </code></pre>
 <p><em>Note: Currently, Aegis supports Single Inheritance (a class can only extend one parent).</em></p>
+<h2 id="accessing-parent-methods-super"><a class="header" href="#accessing-parent-methods-super">Accessing Parent Methods (<code>super</code>)</a></h2>
+<p>When you override a method, you often want to <strong>extend</strong> the parent’s behavior rather than replacing it entirely. You can explicitly call a method from the parent class using the <code>super</code> keyword.</p>
+<h3 id="syntax"><a class="header" href="#syntax">Syntax</a></h3>
+<p>To call a method from the parent class inside a child class method:</p>
+<pre><code class="language-aegis">super.methodName(arguments)
+</code></pre>
+<h3 id="example"><a class="header" href="#example">Example</a></h3>
+<p>In this example, the <code>Hero</code> class overrides <code>init</code> but still calls <code>Entity</code>’s <code>init</code> to ensure the base setup is done.</p>
+<pre><code class="language-aegis">class Entity(name) {
+    init() {
+        print "Entity initialized: " + this.name
+    }
+    
+    speak() {
+        return "..."
+    }
+}
+
+class Hero(name, hp) extends Entity {
+    init() {
+        // 1. Call the parent method first
+        super.init()
+        
+        // 2. Add child-specific logic
+        print "Hero ready with " + this.hp + " HP"
+    }
+    
+    speak() {
+        // Reuse parent result in the new string
+        return "Hero says: " + super.speak() + " (Ready!)"
+    }
+}
+
+var h = new Hero("Link", 100)
+h.init()
+print h.speak()
+</code></pre>
+<p>Output:</p>
+<pre><code>Entity initialized: Link
+Hero ready with 100 HP
+Hero says: ... (Ready!)
+</code></pre>
+<p>This pattern is essential for avoiding code duplication when building complex class hierarchies.</p>
 
                     </main>
 
