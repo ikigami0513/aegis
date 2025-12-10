@@ -178,8 +178,13 @@ impl VM {
 
     pub fn run(&mut self) -> Result<(), String> {
         loop {
-            if !self.step()? {
-                break;
+            match self.step() {
+                Ok(true) => continue, // Continue loop
+                Ok(false) => break,   // End of program
+                Err(e) => {
+                    // C'est ici qu'on enrichit l'erreur !
+                    return Err(self.runtime_error(e));
+                }
             }
         }
         Ok(())
@@ -1169,5 +1174,22 @@ impl VM {
 
         // Et on lance l'exécution !
         self.run()
+    }
+
+    fn runtime_error(&self, message: String) -> String {
+        let frame = self.frames.last().expect("No frame for error");
+        let chunk = frame.chunk();
+        
+        // On récupère l'IP précédent (l'instruction qui a causé l'erreur)
+        let ip = if frame.ip > 0 { frame.ip - 1 } else { 0 };
+        
+        // On récupère la ligne
+        let line = if ip < chunk.lines.len() {
+            chunk.lines[ip]
+        } else {
+            0
+        };
+
+        format!("[Line {}] Error: {}", line, message)
     }
 }

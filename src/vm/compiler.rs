@@ -13,6 +13,7 @@ pub struct Compiler {
     pub locals: HashMap<String, u8>,
     pub scope_depth: usize,
     pub current_return_type: Option<String>,
+    pub current_line: usize
 }
 
 impl Compiler {
@@ -34,6 +35,7 @@ impl Compiler {
             locals: HashMap::new(),
             scope_depth: 0,
             current_return_type: None,
+            current_line: 1
         }
     }
 
@@ -44,22 +46,24 @@ impl Compiler {
             locals: HashMap::new(),
             scope_depth: 0,
             current_return_type: None,
+            current_line: 1
         }
     }
 
-    pub fn compile(mut self, instruction: Vec<Instruction>) -> (Chunk, Rc<RefCell<HashMap<String, u8>>>) {
-        for instr in instruction {
-            self.compile_instruction(instr);
+    pub fn compile(mut self, statements: Vec<crate::ast::Statement>) -> (Chunk, Rc<RefCell<HashMap<String, u8>>>) {
+        for stmt in statements {
+            self.current_line = stmt.line;
+            self.compile_instruction(stmt.kind);
         }
         (self.chunk, self.globals)
     } 
 
     fn emit_byte(&mut self, byte: u8) {
-        self.chunk.write(byte);
+        self.chunk.write(byte, self.current_line);
     }
     
     fn emit_op(&mut self, op: OpCode) {
-        self.chunk.write(op as u8);
+        self.emit_byte(op as u8);
     }
 
     fn emit_constant(&mut self, val: Value) {

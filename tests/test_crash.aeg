@@ -1,0 +1,3 @@
+print "TEST CRASH WITH ERROR LINE"
+
+var x = 2 / 0

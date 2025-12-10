@@ -190,14 +190,9 @@ fn run_file(filename: &str) -> Result<(), String> {
     // 2. Loader (Partagé avec la v1) : AST -> Statements
     let statements = loader::parse_block(&json_data)?;
 
-    // 3. Adapter : Statements -> Instructions pures
-    // C'est nécessaire car le loader v1 retourne des objets Statement (avec métadonnées)
-    // alors que le compilateur v2 attend des instructions brutes.
-    let instructions = statements.into_iter().map(|s| s.kind).collect();
-
-    // 4. Compilation v2 : Instructions -> Bytecode Chunk
+    // 3. Compilation v2 : Statements -> Bytecode Chunk
     let compiler = aegis_core::vm::compiler::Compiler::new();
-    let (chunk, global_names) = compiler.compile(instructions);
+    let (chunk, global_names) = compiler.compile(statements);
 
     // Debug: Décommenter pour voir le bytecode généré lors d'un simple run
     // use aegis_core::vm::debug;
@@ -255,9 +250,6 @@ fn run_repl() {
                         // B. Loader (JSON -> Instructions)
                         match loader::parse_block(&json_ast) {
                             Ok(statements) => {
-                                // Conversion Statement -> Instruction
-                                let instructions: Vec<_> = statements.into_iter().map(|s| s.kind).collect();
-
                                 // C. Compilation v2 (Instructions -> Bytecode)
                                 // IMPORTANT : On utilise 'new_with_globals' pour que le compilateur
                                 // connaisse les variables définies aux lignes précédentes !
@@ -266,7 +258,7 @@ fn run_repl() {
                                 // On force le scope global pour que 'var x = 1' soit persistant (SetGlobal)
                                 repl_compiler.scope_depth = 0; 
                                 
-                                let (chunk, _) = repl_compiler.compile(instructions);
+                                let (chunk, _) = repl_compiler.compile(statements);
 
                                 // D. Exécution (Injection dans la VM existante)
                                 if let Err(e) = vm.execute_chunk(chunk) {
