@@ -34,8 +34,8 @@ pub fn parse_expression(json_expr: &JsonValue) -> Result<Expression, String> {
     if let Some(array) = json_expr.as_array() {
         if array.is_empty() { return Ok(Expression::Literal(Value::List(Rc::new(RefCell::new(vec![]))))); }
         
-        if let Some(command) = array[0].as_str() {
-            match command {
+        if let Some(cmd_name) = array[0].as_str() {
+            match cmd_name {
                 // --- Variables ---
                 "get" => {
                     let name = array[1].as_str().ok_or("Var name missing")?;
@@ -58,8 +58,7 @@ pub fn parse_expression(json_expr: &JsonValue) -> Result<Expression, String> {
                 // --- Arithmétique ---
                 "+" => Ok(Expression::Add(Box::new(parse_expression(&array[1])?), Box::new(parse_expression(&array[2])?))),
                 "-" => {
-                    // Gérer le cas unaire ["-", 0, val] ou binaire
-                    Ok(Expression::Sub(Box::new(parse_expression(&array[1])?), Box::new(parse_expression(&array[2])?)))
+                     Ok(Expression::Sub(Box::new(parse_expression(&array[1])?), Box::new(parse_expression(&array[2])?)))
                 },
                 "*" => Ok(Expression::Mul(Box::new(parse_expression(&array[1])?), Box::new(parse_expression(&array[2])?))),
                 "/" => Ok(Expression::Div(Box::new(parse_expression(&array[1])?), Box::new(parse_expression(&array[2])?))),
@@ -84,7 +83,6 @@ pub fn parse_expression(json_expr: &JsonValue) -> Result<Expression, String> {
                     }
                     Ok(Expression::Dict(entries))
                 },
-                
                 "new" => {
                     let class_name_expr = parse_expression(&array[1])?;
                     let args_json = &array[2..];
@@ -110,56 +108,58 @@ pub fn parse_expression(json_expr: &JsonValue) -> Result<Expression, String> {
                     Ok(Expression::Function { params, ret_type: None, body })
                 },
 
-                // --- Appels et Fallback ---
-                cmd_name => {
-                    // Cas spécial : Instructions utilisées comme expressions (call, call_method avec numéros de ligne)
-                    if cmd_name == "call" || cmd_name == "call_method" {
-                       // Si l'index 1 est un nombre, c'est une ligne injectée par parse_statement -> on l'ignore ici
-                       if array.len() > 2 && array[1].is_u64() {
-                           // Format: ["call", line, target, args]
-                           let target = parse_expression(&array[2])?;
-                           let args_idx = if cmd_name == "call" { 3 } else { 4 };
-                           
-                           if cmd_name == "call" {
-                               let args_arr = array[args_idx].as_array().ok_or("Args array")?;
-                               let args = args_arr.iter().map(parse_expression).collect::<Result<_,_>>()?;
-                               return Ok(Expression::Call(Box::new(target), args));
-                           } else {
-                               // call_method: ["call_method", line, obj, method, args]
-                               // obj = index 2, method = index 3, args = index 4
-                               let method = array[3].as_str().unwrap().to_string();
-                               let args_arr = array[4].as_array().unwrap();
-                               let args = args_arr.iter().map(parse_expression).collect::<Result<_,_>>()?;
-                               return Ok(Expression::CallMethod(Box::new(target), method, args));
-                           }
-                       }
-                    }
+                // --- GESTION ROBUSTE DES APPELS (AVEC OU SANS LIGNE) ---
+                
+                "call" => {
+                    // Avec Ligne: ["call", LINE, TARGET, ARGS] -> Len 4
+                    // Sans Ligne: ["call", TARGET, ARGS]       -> Len 3
+                    let (target_idx, args_idx) = if array.len() == 4 { (2, 3) } else { (1, 2) };
+                    
+                    let target = parse_expression(&array[target_idx])?;
+                    let args_arr = array[args_idx].as_array().ok_or("Call: Args array missing")?;
+                    let args = args_arr.iter().map(parse_expression).collect::<Result<_,_>>()?;
+                    
+                    Ok(Expression::Call(Box::new(target), args))
+                },
 
-                    match cmd_name {
-                        "call" => {
-                             let target = parse_expression(&array[1])?;
-                             let args_arr = array[2].as_array().ok_or("Args array")?;
-                             let args = args_arr.iter().map(parse_expression).collect::<Result<_,_>>()?;
-                             Ok(Expression::Call(Box::new(target), args))
-                        },
-                        "call_method" => {
-                            let obj = parse_expression(&array[1])?;
-                            let method = array[2].as_str().unwrap().to_string();
-                            let args = array[3].as_array().unwrap().iter().map(parse_expression).collect::<Result<_,_>>()?;
-                            Ok(Expression::CallMethod(Box::new(obj), method, args))
-                        },
-                        // Fallback générique (ex: print implicite ou autre)
-                        _ => {
-                             if array.len() > 1 {
-                                 let args = array[1..].iter().map(parse_expression).collect::<Result<_,_>>()?;
-                                 let target = Expression::Variable(cmd_name.to_string());
-                                 Ok(Expression::Call(Box::new(target), args))
-                             } else {
-                                 let val = json_to_value(json_expr)?;
-                                 Ok(Expression::Literal(val))
-                             }
-                        }
-                    }
+                "call_method" => {
+                    // Avec Ligne: ["call_method", LINE, OBJ, METHOD, ARGS] -> Len 5
+                    // Sans Ligne: ["call_method", OBJ, METHOD, ARGS]       -> Len 4
+                    let (obj_idx, method_idx, args_idx) = if array.len() == 5 { (2, 3, 4) } else { (1, 2, 3) };
+
+                    let obj = parse_expression(&array[obj_idx])?;
+                    let method = array[method_idx].as_str().ok_or("CallMethod: Method name missing")?.to_string();
+                    let args_arr = array[args_idx].as_array().ok_or("CallMethod: Args array missing")?;
+                    let args = args_arr.iter().map(parse_expression).collect::<Result<_,_>>()?;
+                    
+                    Ok(Expression::CallMethod(Box::new(obj), method, args))
+                },
+
+                "super_call" => {
+                    // Avec Ligne: ["super_call", LINE, METHOD, ARGS] -> Len 4
+                    // Sans Ligne: ["super_call", METHOD, ARGS]       -> Len 3
+                    let (method_idx, args_idx) = if array.len() == 4 { (2, 3) } else { (1, 2) };
+
+                    let method = array[method_idx].as_str().ok_or("SuperCall: Method name missing")?.to_string();
+                    let args_arr = array[args_idx].as_array().ok_or("SuperCall: Args array missing")?;
+                    let args = args_arr.iter().map(parse_expression).collect::<Result<_,_>>()?;
+                    
+                    Ok(Expression::SuperCall(method, args))
+                },
+                // -----------------------------------------------------
+
+                // Fallback (pour les expressions génériques)
+                _ => {
+                     // Si ce n'est pas un mot-clé connu, est-ce un appel implicite ?
+                     // Ex: ["ma_fonction", arg1] -> Call
+                     if array.len() > 1 {
+                         let args = array[1..].iter().map(parse_expression).collect::<Result<_,_>>()?;
+                         let target = Expression::Variable(cmd_name.to_string());
+                         Ok(Expression::Call(Box::new(target), args))
+                     } else {
+                         let val = json_to_value(json_expr)?;
+                         Ok(Expression::Literal(val))
+                     }
                 }
             }
         } else {
@@ -168,7 +168,7 @@ pub fn parse_expression(json_expr: &JsonValue) -> Result<Expression, String> {
              Ok(Expression::Literal(val))
         }
     } else {
-        // Littéral simple (int, string...)
+        // Littéral simple
         let val = json_to_value(json_expr)?;
         Ok(Expression::Literal(val))
     }
@@ -220,7 +220,7 @@ pub fn parse_statement_json(json_instr: &JsonValue) -> Result<Statement, String>
         },
         "return" => Ok(Instruction::Return(parse_expression(&array[2])?)),
         
-        "call" | "call_method" => {
+        "call" | "call_method" | "super_call" => {
             // Ici, parse_expression va gérer le format imbriqué
             Ok(Instruction::ExpressionStatement(parse_expression(json_instr)?))
         },

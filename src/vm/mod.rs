@@ -861,6 +861,57 @@ impl VM {
                     ));
                 }
             },
+
+            OpCode::Super => {
+                let method_idx = self.read_byte();
+                let arg_count = self.read_byte() as usize;
+                let parent_idx = self.read_byte(); // Le 3ème argument
+
+                let chunk = self.current_frame().chunk();
+                let method_name = chunk.constants[method_idx as usize].to_string();
+                let parent_name = chunk.constants[parent_idx as usize].to_string();
+
+                // L'objet 'this' est sur la pile, juste avant les args
+                let obj_idx = self.stack.len() - 1 - arg_count;
+                let obj = self.stack[obj_idx].clone(); // On garde 'this' pour l'appel
+
+                // On résout la classe parente DEPUIS LE NOM GRAVÉ DANS LE BYTECODE
+                // C'est ça qui évite la récursion infinie.
+                // Si Animal.speak appelle super, le bytecode contient "LivingBeing".
+                // Si Dog.speak appelle super, le bytecode contient "Animal".
+                
+                if let Some(parent_class_val) = self.get_global_by_name(&parent_name) {
+                    // On commence la recherche directement à ce niveau
+                    let mut current_class_val = Rc::new(parent_class_val);
+                    
+                    // Logique identique à op_method, mais on commence au parent
+                    loop {
+                        if let Value::Class(rc_class) = &*current_class_val {
+                            // A. Trouvé ?
+                            if let Some(method_val) = rc_class.methods.get(&method_name) {
+                                // On remplace 'this' par la méthode sur la pile
+                                // ET on réinsère 'this' (comme op_method)
+                                self.stack[obj_idx] = method_val.clone();
+                                self.stack.insert(obj_idx + 1, obj.clone());
+                                
+                                self.call_value(method_val.clone(), arg_count + 1)?;
+                                return Ok(true); // Continue VM
+                            }
+                            
+                            // B. Remonter encore ?
+                            if let Some(grand_parent) = &rc_class.parent {
+                                if let Some(gp_val) = self.get_global_by_name(grand_parent) {
+                                    current_class_val = Rc::new(gp_val);
+                                    continue;
+                                }
+                            }
+                        }
+                        return Err(format!("Méthode '{}' introuvable dans le parent '{}' (ou ses ancêtres)", method_name, parent_name));
+                    }
+                } else {
+                    return Err(format!("Classe parente '{}' introuvable au runtime", parent_name));
+                }
+            },
         }
 
         Ok(true)

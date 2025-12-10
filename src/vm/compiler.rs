@@ -20,7 +20,8 @@ pub struct Compiler {
     pub scope_depth: usize,
     pub current_return_type: Option<String>,
     pub current_line: usize,
-    pub loop_stack: Vec<LoopState>
+    pub loop_stack: Vec<LoopState>,
+    pub context_parent_name: Option<String>,
 }
 
 impl Compiler {
@@ -43,7 +44,8 @@ impl Compiler {
             scope_depth: 0,
             current_return_type: None,
             current_line: 1,
-            loop_stack: Vec::new()
+            loop_stack: Vec::new(),
+            context_parent_name: None
         }
     }
 
@@ -55,7 +57,8 @@ impl Compiler {
             scope_depth: 0,
             current_return_type: None,
             current_line: 1,
-            loop_stack: Vec::new()
+            loop_stack: Vec::new(),
+            context_parent_name: None
         }
     }
 
@@ -295,6 +298,34 @@ impl Compiler {
                 
                 self.emit_op(OpCode::Call); // Ou OpCode::New si tu en as créé un
                 self.emit_byte(arg_count as u8); // Utilisation
+            },
+
+            Expression::SuperCall(method, args) => {
+                // 1. Vérification : Est-on dans une classe enfant ?
+                let parent_name = if let Some(p) = &self.context_parent_name {
+                    p.clone()
+                } else {
+                    panic!("'super' utilisé hors d'une classe avec héritage.");
+                };
+
+                // 2. On empile 'this' (toujours l'argument 0 d'une méthode)
+                self.emit_op(OpCode::GetLocal);
+                self.emit_byte(0);
+
+                // 3. On empile les arguments
+                let arg_count = args.len();
+                for arg in args {
+                    self.compile_expression(arg);
+                }
+
+                // 4. On émet l'instruction SUPER
+                let name_idx = self.chunk.add_constant(Value::String(method));
+                let parent_idx = self.chunk.add_constant(Value::String(parent_name));
+
+                self.emit_op(OpCode::Super);
+                self.emit_byte(name_idx);
+                self.emit_byte(arg_count as u8);
+                self.emit_byte(parent_idx);
             },
 
             Expression::Function { params, ret_type, body } => {
@@ -596,6 +627,7 @@ impl Compiler {
                 for (m_name, (m_params, m_body)) in def.methods {
                     let mut method_compiler = Compiler::new_with_globals(self.globals.clone());
                     method_compiler.scope_depth = 1;
+                    method_compiler.context_parent_name = def.parent.clone();
                     
                     let mut actual_params = vec![("this".to_string(), None)];
                     actual_params.extend(m_params.clone());

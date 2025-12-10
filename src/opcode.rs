@@ -41,6 +41,7 @@ pub enum OpCode {
     SetAttr,  // operand: const_idx (nom attribut)
     GetAttr,  // operand: const_idx (nom attribut)
     Method,   // operand: const_idx (nom méthode)
+    Super,
 
     // Scopes / Namespaces
     Pop,      // Pour nettoyer la pile (ExpressionStatement)

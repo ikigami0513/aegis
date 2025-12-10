@@ -21,7 +21,8 @@ pub enum TokenKind {
     Namespace,
     BitAnd, BitOr, BitXor, ShiftLeft, ShiftRight,
     At,
-    Arrow
+    Arrow,
+    Super
 }
 
 #[derive(Debug, Clone)]
@@ -345,6 +346,7 @@ impl<'a> Lexer<'a> {
             "throw" => TokenKind::Throw,
             "namespace" => TokenKind::Namespace,
             "continue" => TokenKind::Continue,
+            "super" => TokenKind::Super,
             _ => TokenKind::Identifier(s),
         };
 

@@ -56,9 +56,9 @@ c.speak() // "Meow!" (The parent's method is ignored)
 c.sleep() // "Luna is sleeping." (Still uses the parent's method)
 ```
 
-The Prototype Chain
+## The Prototype Chain
 
-## Aegis supports multi-level inheritance. A class can inherit from a class that inherits from another class.
+Aegis supports multi-level inheritance. A class can inherit from a class that inherits from another class.
 
 ```aegis
 class LivingBeing(age) { 
@@ -80,3 +80,60 @@ print d.is_alive() // true
 ```
 
 *Note: Currently, Aegis supports Single Inheritance (a class can only extend one parent).*
+
+## Accessing Parent Methods (`super`)
+
+When you override a method, you often want to **extend** the parent's behavior rather than replacing it entirely. You can explicitly call a method from the parent class using the `super` keyword.
+
+### Syntax
+
+To call a method from the parent class inside a child class method:
+
+```aegis
+super.methodName(arguments)
+```
+
+### Example
+
+In this example, the `Hero` class overrides `init` but still calls `Entity`'s `init` to ensure the base setup is done.
+
+```aegis
+class Entity(name) {
+    init() {
+        print "Entity initialized: " + this.name
+    }
+    
+    speak() {
+        return "..."
+    }
+}
+
+class Hero(name, hp) extends Entity {
+    init() {
+        // 1. Call the parent method first
+        super.init()
+        
+        // 2. Add child-specific logic
+        print "Hero ready with " + this.hp + " HP"
+    }
+    
+    speak() {
+        // Reuse parent result in the new string
+        return "Hero says: " + super.speak() + " (Ready!)"
+    }
+}
+
+var h = new Hero("Link", 100)
+h.init()
+print h.speak()
+```
+
+Output:
+
+```
+Entity initialized: Link
+Hero ready with 100 HP
+Hero says: ... (Ready!)
+```
+
+This pattern is essential for avoiding code duplication when building complex class hierarchies.

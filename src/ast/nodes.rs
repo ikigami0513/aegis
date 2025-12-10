@@ -51,6 +51,7 @@ pub enum Expression {
     CallMethod(Box<Expression>, String, Vec<Expression>),
     List(Vec<Expression>),
     Dict(Vec<(String, Expression)>),
+    SuperCall(String, Vec<Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

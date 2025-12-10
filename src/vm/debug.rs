@@ -61,6 +61,19 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
         OpCode::Method => constant_instruction("METHOD", chunk, offset),
         OpCode::GetAttr => constant_instruction("GET_ATTR", chunk, offset),
         OpCode::SetAttr => constant_instruction("SET_ATTR", chunk, offset),
+        OpCode::Super => {
+            let method_idx = chunk.code[offset + 1];
+            let arg_count = chunk.code[offset + 2];
+            let parent_idx = chunk.code[offset + 3];
+
+            let method_name = &chunk.constants[method_idx as usize];
+            let parent_name = &chunk.constants[parent_idx as usize];
+
+            println!("{:-16} '{}' ({} args) super-> '{}'", "SUPER", method_name, arg_count, parent_name);
+            
+            // On avance de 4 (1 OpCode + 3 Args)
+            offset + 4
+        },
         
         OpCode::Input => simple_instruction("INPUT", offset),
 

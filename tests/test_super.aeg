@@ -1,0 +1,31 @@
+print "--- TEST SUPER ---"
+
+class Entity(name) {
+    init() {
+        print "Entity Init: " + this.name
+    }
+    
+    speak() {
+        return "..."
+    }
+}
+
+class Hero(name, hp) extends Entity {
+    // Test super dans une méthode custom
+    init() {
+        print "Hero Init Start"
+        super.init() // Doit appeler Entity.init avec le 'this' du Hero
+        print "Hero Init End. HP=" + this.hp
+    }
+    
+    // Test super + override + return
+    speak() {
+        return "Hero says: " + super.speak() + " (I am ready)"
+    }
+}
+
+var h = new Hero("Link", 100)
+h.init()
+
+print ""
+print h.speak()

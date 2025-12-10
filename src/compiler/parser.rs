@@ -95,7 +95,7 @@ impl Parser {
             TokenKind::Switch => self.parse_switch(),
             TokenKind::Namespace => self.parse_namespace(),
             
-            TokenKind::Identifier(_) => {
+            TokenKind::Identifier(_) | TokenKind::Super => {
                 let line = self.current_line();
                 let expr = self.parse_expression()?;
 
@@ -146,7 +146,7 @@ impl Parser {
                             let mut new_arr = arr.clone();
                             if !new_arr.is_empty() {
                                 if let Some(cmd) = new_arr[0].as_str() {
-                                    if cmd == "call" || cmd == "call_method" {
+                                    if cmd == "call" || cmd == "call_method" || cmd == "super_call" {
                                         new_arr.insert(1, json!(line));
                                         return Ok(Value::Array(new_arr));
                                     }
@@ -678,6 +678,30 @@ impl Parser {
                 let mut new_cmd = vec![json!("new"), expr];
                 new_cmd.extend(args);
                 json!(new_cmd)
+            },
+            TokenKind::Super => {
+                self.advance(); // Consomme 'super'
+                self.consume(TokenKind::Dot, "Expect '.' after super")?;
+                
+                let method_name = if let TokenKind::Identifier(n) = &self.advance().kind {
+                    n.clone()
+                } else {
+                    return Err("Expect superclass method name".into());
+                };
+
+                self.consume(TokenKind::LParen, "Expect '(' after method name")?;
+                
+                let mut args = Vec::new();
+                if !self.check(&TokenKind::RParen) {
+                    loop {
+                        args.push(self.parse_expression()?);
+                        if !self.match_token(TokenKind::Comma) { break; }
+                    }
+                }
+                self.consume(TokenKind::RParen, "Expect ')' after arguments")?;
+
+                // On génère le format JSON attendu par le Loader
+                json!(["super_call", method_name, args])
             },
             _ => return Err(format!("Unexpected token: {:?}", self.peek()))
         };
