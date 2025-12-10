@@ -1,294 +1,151 @@
-# 🛡️ Aegis Language Documentation
+# 🛡️ Aegis Language
 
-Aegis is a modern, dynamic (with gradual typing), object-oriented interpreted scripting language written in Rust. It combines the simplicity of Python/JavaScript with powerful features like first-class functions, pattern matching, and built-in system tools.
+Aegis is a modern, dynamic, high-performance scripting language written in Rust.
 
----
+Previously an AST interpreter, **Aegis v0.2.0** introduces a brand new Stack-Based Bytecode Virtual Machine, making it exponentially faster and suitable for real-world applications, game scripting, and system automation.
 
-## 🚀 Quick Start
-### Interactive Mode (REPL)
+## ⚡ Performance Benchmark (Fibonacci 30)
 
-To start the Aegis shell and type code directly:
+The move to a Bytecode VM resulted in a massive performance leap.
+| Language | Engine | Execution Time |
+|--- |--- |--- |
+| Rust | Native (Optimized) | ~2 ms |
+| Python | CPython 3.11 | ~147 ms |
+| Aegis v0.2 | Bytecode VM (Rust) | ~290 ms |
+| Aegis v0.1 | Tree-Walk Interpreter | ~7286 ms |
+
+## 📘 Documentation
+
+The complete documentation, including tutorials and API reference, is available here: 👉 (The Aegis Book)[https://aegisprogramminglanguage.github.io/AegisProgrammingLanguage/getting_started/cheatsheet.html]
+
+## 🚀 Installation & Usage
+
+### Building from Source
+
+You need Rust installed.
 
 ```bash
-cargo run
+git clone https://github.com/your-username/aegis.git
+cd aegis
+cargo install --path .
 ```
 
-### Run a Script
-
-To execute an Aegis file:
+Running a Script
 
 ```bash
-cargo run path/to/script.aeg
+aegis run path/to/script.aeg
 ```
 
----
+Interactive Mode (REPL)
 
-## 1️⃣ Variables & Types
-### Declaration & Types
-
-Variables are declared using var. Aegis supports Gradual Typing: you can specify types for safety, or leave them dynamic.
-
+```bash
+aegis repl
 ```
-// Dynamic typing
+
+## ✨ Features Overview
+
+### 1️⃣ Typing System (Gradual Typing)
+
+Aegis allows you to mix dynamic freedom with static safety.
+
+```aegis
+// Dynamic
 var x = 10
 var name = "Aegis"
 
-// Static typing (Gradual)
+// Typed (Runtime checked)
 var age: int = 25
-var pi: float = 3.14159
-var active: bool = true
+var price: float = 19.99
 ```
 
-### Destructuring
+### 2️⃣ Modern Data Structures
 
-You can unpack lists directly into variables.
+Native support for Lists and Dictionaries with functional methods.
 
-```
-var point = [10, 20]
-var [x, y] = point
-print x // 10
-```
+```aegis
+var users = [
+    { name: "Alice", admin: true },
+    { name: "Bob", admin: false }
+]
 
-### String Interpolation & Formatting
+// Functional chaining (Map/Filter)
+var admins = users.filter(func(u) { return u.get("admin") })
+                  .map(func(u) { return u.get("name") })
 
-Embed expressions directly into strings using ${...}. You can also specify format precision for floats.
-
-```
-var item = "Apple"
-var price = 1.256
-print "The ${item} costs ${price:.2f} dollars." 
-// Output: "The Apple costs 1.26 dollars."
+print admins // ["Alice"]
 ```
 
----
+### 3️⃣ Control Flow
 
-## 2️⃣ Data Structures
-### Lists
+Includes `if`, `while`, `for` (range-based), and `switch`. Supports `break` and `continue`.
 
-Ordered collections of items.
-
-```
-var list = [1, 2, 3]
-list.push(4)
-print list.at(0) // Access element
-```
-
-### Dictionaries
-
-Key-value pairs. Keys can be strings. Access values via methods or dot notation.
-
-```
-var user = {
-    nom: "Alice",
-    role: "Admin"
-}
-
-// Access
-print user.get("nom") // Method style
-print user.role       // Property style (Syntactic sugar)
-```
-
----
-
-## 3️⃣ Operators
-### Arithmetic & Assignment
-
-Standard: `+`, `-`, `*`, `/`, `%`. Shorthands: `+=`, `-=`, `*=`, `/=`, `++`, `--`.
-
-```
-var i = 0
-i++       // i is 1
-i += 10   // i is 11
-```
-
-### Bitwise Operators
-
-Low-level bit manipulation. `&` (AND), `|` (OR), `^` (XOR), `<<` (Left Shift), `>>` (Right Shift).
-
-```
-var a = 12 // 1100
-var b = 5  // 0101
-print a & b // 4 (0100)
-```
-
----
-
-## 4️⃣ Control Structures
-### Conditionals
-
-Standard `if`, `else`. Parentheses are required.
-
-```
-if (x > 10) { ... } else { ... }
-```
-
-### Loops
-
-- While: `while (condition) { ... }`
-
-- For Range: `for (var_name, start, end, step) { ... }`
-
-### Switch / Case
-
-Clean control flow with implicit break.
-
-```
-switch (val) {
-    case 1:
-        print "One"
-    case 2:
-        print "Two"
-    default:
-        print "Other"
+```aegis
+for (i, 0, 10, 1) {
+    if (i % 2 == 0) { continue }
+    print i
 }
 ```
 
-### Error Handling (Try / Catch)
+### 4️⃣ Object-Oriented Programming
 
-Safely handle runtime errors.
+Class-based OOP with Single Inheritance, Methods, and `super` calls.
 
-```
-try {
-    var res = 10 / 0
-} catch (e) {
-    print "Error caught: " + e
+```aegis
+class Entity(name) {
+    init() { print this.name + " spawned." }
 }
-```
 
----
-
-## 5️⃣ Functions & Lambdas
-### Named Functions (Typed)
-
-You can optionally type arguments and return values.
-
-```
-func add(a: int, b: int) -> int {
-    return a + b
-}
-```
-
-### Anonymous Functions (Lambdas)
-
-Functions are first-class citizens. They can be stored in variables and passed as arguments.
-
-```
-var greet = func(name) {
-    print "Hello " + name
-}
-greet("World")
-```
-
-### Decorators
-
-Wrap functions with logic using `@`.
-
-```
-@log
-func compute(x) { return x * x }
-```
-
----
-
-## 6️⃣ Functional Programming
-
-Lists support functional methods using lambdas.
-
-- map: Transform elements.
-
-- filter: Select elements.
-
-- for_each: Iterate over elements.
-
-```
-var nums = [1, 2, 3, 4]
-
-// Square numbers > 2
-var res = nums.filter(func(n) { return n > 2 })
-              .map(func(n) { return n * n })
-
-print res // [9, 16]
-```
-
-## 7️⃣ Object-Oriented Programming
-### Classes & Namespaces
-
-Classes define objects. Namespaces organize code.
-
-```
-namespace Game {
-    class Player(name) {
-        hello() { print "Hi, I am " + this.name }
+class Hero(name, hp) extends Entity {
+    init() {
+        super.init()
+        this.hp = hp
     }
 }
 
-var p = new Game.Player("Mario")
-p.hello()
+var p = new Hero("Link", 100)
+p.init()
 ```
 
-### Inheritance
+### 5️⃣ Modularity
 
-Use extends to inherit methods.
+Code organization with **Namespaces** and **Imports**.
 
+```aegis
+// file: math_utils.aeg
+namespace MathUtils {
+    func add(a, b) { return a + b }
+}
+
+// main.aeg
+import "math_utils.aeg"
+print MathUtils.add(10, 20)
 ```
-class Dog(n) extends Animal { ... }
-```
 
----
+### 🔋 Standard Library ("Batteries Included")
 
-## 8️⃣ Standard Library (Modules)
+Aegis v0.2.0 ships with a rich set of modules built into the VM or available as native extensions.
 
-Aegis comes with a powerful standard library organized in Namespaces.
+| Module | Purpose | Example |
+|--- |--- |--- |
+| System | OS interaction (Args, Env, Clear) | `System.env("PATH")` |
+| File | Read/Write files | `File.read("config.json")` |
+| Http | Web Client (GET/POST) | `Http.get("https://api.com")` |
+| Socket | TCP Networking (Server/Client) | `Socket.listen("127.0.0.1", 8080)` |
+| Json | Parsing & Serialization | `Json.parse(data)` |
+| Regex | Pattern Matching | `Regex.match(re, text)` |
+| Math | Advanced Math & Vector2 | `Math.sin(x)` |
 
-`Math`
-| Function | Description |
-| :--- | :--- |
-| Math.PI | Constant (3.14159...) |
-| Math.abs(n) | Absolute value |
-| Math.pow(b, e) | Power |
-| Math.sqrt(n) | Square root |
-| Math.max(a, b) | Maximum |
-| Math.Vector2(x,y) | Class for 2D vectors |
+## 🛠️ Tooling
 
-`File (I/O)`
-| Function | Description |
-| :--- | :--- |
-| File.read(path) | Returns file content as string or null. |
-| File.write(path, str) | Writes (overwrites) to a file. |
-| File.append(path, str) | Appends text to end of file. |
-| File.exists(path) | Returns true if file exists. |
-| File.delete(path) | Deletes a file. |
+- **VS Code Extension**: Syntax highlighting is available for `.aeg` files.
+- **Package Manager**: Use `aegis add <package>` to install dependencies (WIP).
 
-`System`
-| Function | Description |
-| :--- | :--- |
-| System.clear() | Clears the console screen. |
+## 🤝 Contributing
 
-`Time`
-| Function | Description |
-| :--- | :--- |
-| Time.now() | Returns current timestamp (ms). |
-| Time.sleep(ms) | Pauses execution. |
-| Time.elapsed(start) | Returns elapsed ms since start. |
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-`Random`
-| Function | Description |
-| :--- | :--- |
-| Random.int(min, max) | Random integer `[min, max[`. |
-| Random.float() | Random float `0.0 - 1.0`. |
-
----
-
-## 9️⃣ Global Built-ins
-
-- `print expr`: Outputs to console.
-
-- `input var prompt`: Reads user input.
-
-- `len(obj)`: Length of list/string/dict.
-
-- `str(obj)`: Convert to string.
-
-- `to_int(str)`: Convert to integer.
-
-- `import "file.aeg"`: Loads external script.
+- Fork the project
+- Create your feature branch (`git checkout -b feature/AmazingFeature`)
+- Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+- Push to the branch (`git push origin feature/AmazingFeature`)
+- Open a Pull Request
