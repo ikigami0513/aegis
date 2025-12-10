@@ -1,0 +1,10 @@
+[book]
+title = "The Aegis Book"
+authors = ["Ikigami0513"]
+language = "en"
+
+[build]
+create-missing = false
+
+[output.html]
+additional-js = ["aegis-highlight.js"]
