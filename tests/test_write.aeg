@@ -1,0 +1,15 @@
+import "stdlib/system.aeg"
+
+System.write("A")
+System.write("B")
+
+// Attendu:
+// AB
+
+print ""
+print "A"
+print "B"
+
+// Attendu
+// A
+// B

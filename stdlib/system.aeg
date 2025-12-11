@@ -3,6 +3,10 @@ namespace System {
         return io_clear()
     }
 
+    func write(str) { 
+        return io_write(str) 
+    }
+
     func env(key) {
         return sys_env(key)
     }
