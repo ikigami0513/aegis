@@ -12,6 +12,8 @@ Import: `import "stdlib/system.aeg"`
 | `System.env(key)` | Returns the value of an environment variable (or `null`). |
 | `System.clear()` | Clears the console screen. |
 | `System.fail(msg)` | Exits the program immediately with an error message. |
+| `System.exit(code)` | Exist the program immediately with an exit code. |
+| `System.write(str)` | writes the string passed as a parameter without moving to the next line.  |
 
 ## Time
 

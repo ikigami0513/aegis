@@ -6,6 +6,7 @@ pub fn register(map: &mut HashMap<String, super::NativeFn>) {
     map.insert("io_write".to_string(), io_write);
     map.insert("sys_env".to_string(), sys_env);
     map.insert("sys_fail".to_string(), sys_fail);
+    map.insert("sys_exit".to_string(), sys_exit);
 }
 
 fn io_clear(_: Vec<Value>) -> Result<Value, String> {
@@ -38,4 +39,9 @@ fn sys_env(args: Vec<Value>) -> Result<Value, String> {
 fn sys_fail(args: Vec<Value>) -> Result<Value, String> {
     let msg = args.get(0).and_then(|v| v.as_str().ok()).unwrap_or("Assertion failed".to_string());
     return Err(msg);
+}
+
+fn sys_exit(args: Vec<Value>) -> Result<Value, String> {
+    let code = if args.is_empty() { 0 } else { args[0].as_int().unwrap_or(0) as i32 };
+    std::process::exit(code);
 }
