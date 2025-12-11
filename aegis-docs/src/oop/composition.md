@@ -12,21 +12,34 @@ Imagine building a game. Instead of a deep inheritance tree, you can compose an 
 
 ```aegis
 // Component 1: Position
-class Vector(x, y) {
+class Vector {
+    init(x, y) {
+        this.x = x
+        this.y = y
+    }
+
     func str() { return "(" + this.x + ", " + this.y + ")" }
 }
 
 // Component 2: Stats
-class Stats(hp, mana) {
+class Stats {
+    init(hp, mana) {
+        this.hp = hp
+        this.mana = mana
+    }
+
     func is_alive() { return this.hp > 0 }
 }
 
 // Main Entity using Composition
-class Player(name, x, y) {
-    // We initialize components in the constructor logic (class body)
-    
-    this.pos = new Vector(x, y)
-    this.stats = new Stats(100, 50)
+class Player {
+    init(name, x, y) {
+        this.name = name
+        
+        // We initialize components inside the constructor
+        this.pos = new Vector(x, y)
+        this.stats = new Stats(100, 50)
+    }
     
     func info() {
         print this.name + " is at " + this.pos.str()

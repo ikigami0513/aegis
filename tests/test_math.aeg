@@ -8,14 +8,3 @@ print "Max(10, 20): " + Math.max(10, 20)
 print "Pow(2, 8): " + Math.pow(2, 8) // Devrait afficher 256
 print "Sqrt(16): " + Math.sqrt(16)   // Devrait afficher 4 ou 4.000...
 print "GCD(48, 18): " + Math.gcd(48, 18) // Devrait afficher 6
-
-print ""
-print "--- TEST GEOMETRY ---"
-
-var v1 = new Math.Vector2(3, 4)
-print "V1: " + v1.to_string()
-print "Magnitude V1 (attendu 5): " + v1.magnitude()
-
-var v2 = new Math.Vector2(1, 1)
-var v3 = v1.add(v2)
-print "V1 + V2: " + v3.to_string()

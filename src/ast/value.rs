@@ -17,7 +17,6 @@ pub struct FunctionData {
 pub struct ClassData {
     pub name: String,
     pub parent: Option<String>,
-    pub params: Vec<(String, Option<String>)>,
     pub methods: HashMap<String, Value>,
 }
 

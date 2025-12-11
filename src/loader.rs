@@ -245,15 +245,8 @@ pub fn parse_statement_json(json_instr: &JsonValue) -> Result<Statement, String>
         
         "class" => {
             let name = array[2].as_str().unwrap().to_string();
-            let params_json = array[3].as_array().unwrap();
-            let mut params = Vec::new();
-            for p in params_json {
-                if let Some(s) = p.as_str() { params.push((s.to_string(), None)); }
-                else if let Some(pair) = p.as_array() {
-                    params.push((pair[0].as_str().unwrap().to_string(), pair[1].as_str().map(|s| s.to_string())));
-                }
-            }
-            let methods_map = array[4].as_object().unwrap();
+
+            let methods_map = array[3].as_object().unwrap();
             let mut methods = HashMap::new();
             for (k, v) in methods_map {
                 let m_arr = v.as_array().unwrap();
@@ -268,8 +261,12 @@ pub fn parse_statement_json(json_instr: &JsonValue) -> Result<Statement, String>
                 let m_body = parse_block(&m_arr[1])?;
                 methods.insert(k.clone(), (m_params, m_body));
             }
-            let parent = if array.len() > 5 { array[5].as_str().map(|s| s.to_string()) } else { None };
-            Ok(Instruction::Class(crate::ast::ClassDefinition { name, parent, params, methods }))
+            let parent = if array.len() > 4 { array[4].as_str().map(|s| s.to_string()) } else { None };
+            Ok(Instruction::Class(crate::ast::ClassDefinition { 
+                name, 
+                parent, 
+                methods 
+            }))
         },
         
         "import" => Ok(Instruction::Import(array[2].as_str().unwrap().to_string())),

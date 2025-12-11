@@ -824,13 +824,13 @@ impl VM {
                     
                     // Run the module synchronously.
                     // Its instructions (SET_GLOBAL) will write directly to 'self.globals'.
-                    self.run_callable_sync(module_func, vec![])?;
+                    let module_result = self.run_callable_sync(module_func, vec![])?;
 
                     // 6. UPDATE CACHE
                     self.modules.insert(path.clone(), Value::Boolean(true));
                     
                     // 7. RETURN
-                    self.push(Value::Null);
+                    self.push(module_result);
                 }
             },
             OpCode::CheckType => {
@@ -1190,26 +1190,64 @@ impl VM {
 
             // CAS 2 : Classe
             Value::Class(rc_class) => { // Déstructuration newtype
-                if arg_count != rc_class.params.len() { 
-                    return Err(format!("Constructeur {}: attendu {} args", rc_class.name, rc_class.params.len())); 
-                }
-                
-                // Ici target contient déjà un Rc<ClassData>, le cloner est rapide
+                // 1. Création de l'instance vide
                 let class_val_rc = Rc::new(target.clone());
-                
-                let mut fields = HashMap::new();
-                for (i, (param_name, _)) in rc_class.params.iter().enumerate() {
-                    let arg_val = self.stack[func_idx + 1 + i].clone();
-                    fields.insert(param_name.clone(), arg_val);
-                }
                 
                 let instance = Value::Instance(Rc::new(RefCell::new(InstanceData {
                     class: class_val_rc,
-                    fields
+                    fields: HashMap::new()
                 })));
+
+                // 2. Recherche du constructeur "init"
+                // On doit chercher dans la classe ET ses parents (via get_method helper si tu en as un, 
+                // ou on réimplémente une petite recherche rapide ici).
+                let mut init_method = None;
+                let mut current_class = rc_class.clone();
+
+                // Recherche manuelle dans la chaîne de prototypes pour "init"
+                // (Copie simplifiée de la logique de op_method)
+                loop {
+                    if let Some(m) = current_class.methods.get("init") {
+                        init_method = Some(m.clone());
+                        break;
+                    }
+                    if let Some(p_name) = &current_class.parent {
+                         if let Some(p_val) = self.get_global_by_name(p_name) {
+                             if let Value::Class(p_rc) = p_val {
+                                 current_class = p_rc;
+                                 continue;
+                             }
+                         }
+                    }
+                    break;
+                }
+
+                // 3. Appel du constructeur
+                if let Some(method_val) = init_method {
+                    // On récupère les arguments depuis la pile
+                    let args_start = func_idx + 1;
+                    let args: Vec<Value> = self.stack.drain(args_start..).collect();
+                    
+                    // On injecte 'this' (l'instance qu'on vient de créer)
+                    // Attention : run_callable_sync attend [args], mais comme c'est une méthode, 
+                    // la convention Aegis (compiler) attend 'this' en premier argument.
+                    let mut call_args = vec![instance.clone()];
+                    call_args.extend(args);
+
+                    // Appel Synchrone : On exécute init maintenant
+                    self.run_callable_sync(method_val, call_args)?;
+                } else {
+                    // Pas de constructeur : Si des arguments ont été passés, c'est une erreur ?
+                    // En Python, object() ne prend pas d'arguments.
+                    if arg_count > 0 {
+                        return Err(format!("Classe '{}' n'a pas de constructeur 'init', mais {} arguments fournis.", rc_class.name, arg_count));
+                    }
+                    
+                    // On nettoie la pile (arguments vides s'il y en a, théoriquement non)
+                    self.stack.truncate(func_idx + 1);
+                }
                 
                 self.stack[func_idx] = instance;
-                self.stack.truncate(func_idx + 1);
                 Ok(())
             },
 

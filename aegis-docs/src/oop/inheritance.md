@@ -8,11 +8,15 @@ In Aegis, inheritance is achieved using the `extends` keyword.
 
 ## Basic Inheritance
 
-When a class extends another, it automatically gains access to all methods defined in the parent class.
+When a class extends another, it automatically gains access to all methods defined in the parent class. This includes the `init` method if the child does not define its own.
 
 ```aegis
 // The Parent Class
-class Animal(name) {
+class Animal {
+    init(name) {
+        this.name = name
+    }
+
     speak() {
         print this.name + " makes a generic noise."
     }
@@ -23,14 +27,15 @@ class Animal(name) {
 }
 
 // The Child Class
-class Dog(name) extends Animal {
-    // Dog creates its own scope but inherits 'speak' and 'sleep'
+class Dog extends Animal {
+    // Dog inherits 'init', 'speak', and 'sleep' from Animal
     
     fetch() {
         print this.name + " runs after the ball!"
     }
 }
 
+// 'new' calls Animal.init because Dog doesn't override it
 var d = new Dog("Rex")
 
 d.fetch() // "Rex runs after the ball!" (Defined in Dog)
@@ -44,7 +49,7 @@ A child class can provide its own implementation of a method that already exists
 When you call a method, Aegis looks for it in the current class first. If found, it executes it. If not, it looks in the parent class.
 
 ```aegis
-class Cat(name) extends Animal {
+class Cat extends Animal {
     // Overriding the 'speak' method
     speak() {
         print "Meow!"
@@ -61,16 +66,23 @@ c.sleep() // "Luna is sleeping." (Still uses the parent's method)
 Aegis supports multi-level inheritance. A class can inherit from a class that inherits from another class.
 
 ```aegis
-class LivingBeing(age) { 
+class LivingBeing { 
+    init(age) { this.age = age }
     is_alive() { return true } 
 }
 
-class Animal(name, age) extends LivingBeing { 
-    // ... 
+class Animal extends LivingBeing { 
+    init(name, age) {
+        super.init(age)
+        this.name = name
+    }
 }
 
-class Dog(name, age, breed) extends Animal { 
-    // ... 
+class Dog extends Animal { 
+    init(name, age, breed) {
+        super.init(name, age)
+        this.breed = breed
+    }
 }
 
 var d = new Dog("Buddy", 5, "Golden")
@@ -98,8 +110,9 @@ super.methodName(arguments)
 In this example, the `Hero` class overrides `init` but still calls `Entity`'s `init` to ensure the base setup is done.
 
 ```aegis
-class Entity(name) {
-    init() {
+class Entity {
+    init(name) {
+        this.name = name
         print "Entity initialized: " + this.name
     }
     
@@ -108,12 +121,13 @@ class Entity(name) {
     }
 }
 
-class Hero(name, hp) extends Entity {
-    init() {
+class Hero extends Entity {
+    init(name, hp) {
         // 1. Call the parent method first
-        super.init()
+        super.init(name)
         
         // 2. Add child-specific logic
+        this.hp = hp
         print "Hero ready with " + this.hp + " HP"
     }
     
@@ -124,7 +138,6 @@ class Hero(name, hp) extends Entity {
 }
 
 var h = new Hero("Link", 100)
-h.init()
 print h.speak()
 ```
 

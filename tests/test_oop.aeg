@@ -1,19 +1,23 @@
 print "--- TEST POO RUST ---"
 
-class Animal(nom) {
+class Animal {
+    init(name) {
+        this.name = name
+    }
+
     parler() {
-        print this.nom + " fait du bruit."
+        print this.name + " fait du bruit."
     }
 }
 
-class Chien(nom) extends Animal {
+class Chien extends Animal {
     parler() {
-        print this.nom + " aboie : Wouf !"
+        print this.name + " aboie : Wouf !"
     }
     
-    renommer(nouveau_nom) {
+    renommer(new_name) {
         // Test de SetAttr sur 'this'
-        this.nom = nouveau_nom
+        this.name = new_name
     }
 }
 
@@ -25,4 +29,4 @@ medor.renommer("Brutus")
 medor.parler()
 
 // Test attribut direct
-print "Lecture attribut direct : " + medor.nom
+print "Lecture attribut direct : " + medor.name

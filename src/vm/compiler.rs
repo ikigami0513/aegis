@@ -656,7 +656,6 @@ impl Compiler {
                 let class_val = Value::Class(Rc::new(ClassData {
                     name: def.name.clone(),
                     parent: def.parent.clone(),
-                    params: def.params.clone(),
                     methods: compiled_methods,
                 }));
 

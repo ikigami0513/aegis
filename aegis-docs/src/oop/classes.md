@@ -4,21 +4,29 @@ Object-Oriented Programming allows you to structure your code by bundling data (
 
 ## Defining a Class
 
-Use the `class` keyword. The parameters defined in the parentheses act as the **Constructor arguments**.
+Use the `class` keyword followed by the class name and a block `{ ... }`.
+
+Unlike the previous version, Aegis v0.2.1 uses an explicit **Initializer method** named `init`. This method is automatically called when you create a new instance.
 
 ```aegis
-// Defines a 'User' class with two properties: name and email
-class User(name, email) {
-    // The body of the class is executed when 'new' is called.
+class User {
+    // The initializer (Constructor)
+    init(name, email) {
+        // Assign parameters to the instance fields using 'this'
+        this.name = name
+        this.email = email
+        this.active = true
+        
+        print "Creating user: " + this.name
+    }
     
-    // You can define methods here
-    print "Creating user: " + name
+    // Other methods...
 }
 ```
 
 ## Creating Instances
 
-To create an object (an instance of a class), use the `new` keyword.
+To create an object (an instance of a class), use the `new` keyword. You pass the arguments expected by your `init` method here.
 
 ```aegis
 var admin = new User("Alice", "alice@example.com")
@@ -27,7 +35,7 @@ var guest = new User("Bob", "bob@example.com")
 
 ## Fields (Attributes)
 
-Aegis objects are dynamic. You can access and assign fields using the dot notation. The constructor parameters are automatically available as fields.
+Aegis objects are dynamic. You typically define your fields inside `init`, but you can access, modify, or add new fields at any time using the dot notation.
 
 ```aegis
 print admin.name // "Alice"

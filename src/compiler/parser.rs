@@ -443,7 +443,6 @@ impl Parser {
         let line = self.current_line();
         self.advance(); // Eat 'class'
         let name = if let TokenKind::Identifier(n) = &self.advance().kind { n.clone() } else { return Err("Class Name".into()); };
-        let params = self.parse_params_list()?;
         
         let mut parent = Value::Null;
         if self.match_token(TokenKind::Extends) {
@@ -461,9 +460,9 @@ impl Parser {
         self.consume(TokenKind::RBrace, "}")?;
         
         if parent.is_null() {
-            Ok(json!(["class", line, name, params, methods]))
+            Ok(json!(["class", line, name, methods]))
         } else {
-            Ok(json!(["class", line, name, params, methods, parent]))
+            Ok(json!(["class", line, name, methods, parent]))
         }
     }
 

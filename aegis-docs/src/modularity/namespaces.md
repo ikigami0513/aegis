@@ -32,4 +32,16 @@ var area = Math.circle_area(10)
 print area // 314.159
 ```
 
-*Under the hood: In Aegis v0.2, a Namespace is compiled as a Dictionary containing the local variables defined in its scope.*
+## Namespaces are Objects
+
+Under the hood in Aegis v0.2, a Namespace is compiled as a **Dictionary** containing the local variables defined in its scope.
+
+This means Namespaces are **First-Class Citizens**:
+- They can be assigned to variables.
+- They can be passed as arguments.
+- They can be returned from a script (see Imports).
+
+```aegis
+var M = Math
+print M.square(5) // 25
+```

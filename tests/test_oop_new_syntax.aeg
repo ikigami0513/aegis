@@ -1,0 +1,15 @@
+class Hero {
+    init(name, hp) {
+        this.name = name
+        this.hp = hp
+        this.inventory = []
+        print "Héros créé : " + this.name
+    }
+
+    attack() {
+        print "${this.name} with ${this.hp} HP attacks !!!"
+    }
+}
+
+var h = new Hero("Link", 100)
+h.attack()

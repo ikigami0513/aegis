@@ -4,12 +4,15 @@ Methods are functions defined inside a class. They define what an object can *do
 
 ## Defining Methods
 
-
-
-Inside a class block, define functions as usual.
+Inside a class block, define functions as usual. You typically define an `init` method to setup properties, and then other methods to manipulate them.
 
 ```aegis
-class Rectangle(width, height) {
+class Rectangle {
+    
+    init(width, height) {
+        this.width = width
+        this.height = height
+    }
     
     func area() {
         return this.width * this.height
