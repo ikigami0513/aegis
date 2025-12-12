@@ -233,16 +233,7 @@ pub fn parse_statement_json(json_instr: &JsonValue) -> Result<Statement, String>
             })
         },
         "while" => Ok(Instruction::While { condition: parse_expression(&array[2])?, body: parse_block(&array[3])? }),
-        "for_range" => {
-            let var = array[2].as_str().unwrap().to_string();
-            Ok(Instruction::ForRange { 
-                var_name: var, 
-                start: parse_expression(&array[3])?, 
-                end: parse_expression(&array[4])?, 
-                step: parse_expression(&array[5])?, 
-                body: parse_block(&array[6])? 
-            })
-        },
+        
         "return" => Ok(Instruction::Return(parse_expression(&array[2])?)),
         
         "call" | "call_method" | "super_call" => {

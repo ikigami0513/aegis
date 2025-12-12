@@ -69,13 +69,6 @@ pub enum Instruction {
         condition: Expression,
         body: Vec<Statement>
     },
-    ForRange {
-        var_name: String,
-        start: Expression,
-        end: Expression,
-        step: Expression,
-        body: Vec<Statement>,
-    },
     Return(Expression),
     ExpressionStatement(Expression),
     Function {

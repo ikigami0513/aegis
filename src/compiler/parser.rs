@@ -79,7 +79,6 @@ impl Parser {
             TokenKind::Print => self.parse_print(),
             TokenKind::If => self.parse_if(),
             TokenKind::While => self.parse_while(),
-            TokenKind::For => self.parse_for(),
             TokenKind::Func => self.parse_func(),
             TokenKind::Class => self.parse_class(),
             TokenKind::Enum => self.parse_enum(),
@@ -491,23 +490,6 @@ impl Parser {
         self.consume(TokenKind::RParen, ")")?;
         let body = self.parse_block()?;
         Ok(json!(["while", line, cond, body]))
-    }
-
-    fn parse_for(&mut self) -> Result<Value, String> {
-        let line = self.current_line();
-        self.advance();
-        self.consume(TokenKind::LParen, "(")?;
-        let var = if let TokenKind::Identifier(n) = &self.advance().kind { n.clone() } else { return Err("For var".into()); };
-        self.consume(TokenKind::Comma, ",")?;
-        let start = self.parse_expression()?;
-        self.consume(TokenKind::Comma, ",")?;
-        let end = self.parse_expression()?;
-        self.consume(TokenKind::Comma, ",")?;
-        let step = self.parse_expression()?;
-        self.consume(TokenKind::RParen, ")")?;
-        let body = self.parse_block()?;
-        
-        Ok(json!(["for_range", line, var, start, end, step, body]))
     }
 
     fn parse_class(&mut self) -> Result<Value, String> {

@@ -29,9 +29,11 @@ foreach (i in 0..5) {
 Ranges are objects and expose several methods to manipulate the sequence.
 
 |Method | Description | Example |
+|--- |--- |--- |
 | `.step(n)` | Returns a new Range with a specific step. | `(0..10).step(2)` |
 | `.to_list()` | Converts the Range into a standard List. | `(1..4).to_list()` -> `[1, 2, 3]` |
 | `.len()` | Calculates the number of elements in the range. | `(0..10).step(2).len()` -> `5` |
+| `.at(index)` |Returns the number at the Nth step. | `(0..10).at(2)` -> `2` |
 
 ## Custom Steps and Reverse Loops
 

@@ -18,6 +18,10 @@ if (hp > 75) {
 }
 ```
 
+## Loops
+
+Aegis provides two types of loops: `while` for indefinite iteration and `foreach` for iterating over sequences.
+
 ## While Loop
 
 Repeats a block of code as long as the condition is true.
@@ -31,27 +35,9 @@ while (i > 0) {
 print "Liftoff!"
 ```
 
-## For Range Loop
-
-Aegis uses a specific syntax for numeric iteration, optimized for the Virtual Machine.
-
-Syntax: `for (variable, start, end, step)`
-
-- `variable`: The name of the loop counter (automatically created).
-- `start`: The starting value (inclusive).
-- `end`: The stopping value (exclusive).
-- `step`: The increment amount.
-
-```aegis
-// Print even numbers from 0 to 9
-for (i, 0, 10, 2) {
-    print "Number: " + i
-}
-```
-
 ## The Foreach Loop
 
-The `foreach` loop provides a simplified syntax for iterating over collections like Lists or Strings. It automatically handles the index and bounds checking for you.
+The `foreach` loop is the primary tool for iteration in Aegis. It works with Ranges, Lists, and Strings.
 
 ### Syntax
 
@@ -107,6 +93,41 @@ foreach (row in matrix) {
 }
 ```
 
+## Loop Control: Break and Continue
+
+You can finely control the execution of loops using `break` and `continue`.
+
+### Break
+
+Stops the loop immediately and resumes execution after the loop block.
+
+```aegis
+// Stop searching when we find the target
+var target = 5
+foreach (i in 0..10) {
+    if (i == target) {
+        print "Found it!"
+        break
+    }
+}
+```
+
+### Continue
+
+Skips the rest of the current iteration and jumps directly to the next one (checking the condition in `while`, or incrementing in `for`).
+
+```aegis
+// Print only odd numbers
+foreach (i in 0..10) {
+    // If even, skip printing
+    if (i % 2 == 0) { 
+        continue 
+    }
+    print i
+}
+// Output: 1, 3, 5, 7, 9
+```
+
 ## Switch
 
 The switch statement simplifies long `if`/`else` chains. Aegis switches perform an implicit break (no fall-through).
@@ -124,41 +145,6 @@ switch (status) {
     default:
         print "Unknown status"
 }
-```
-
-## Loop Control: Break and Continue
-
-You can finely control the execution of loops using `break` and `continue`.
-
-### Break
-
-Stops the loop immediately and resumes execution after the loop block.
-
-```aegis
-// Stop searching when we find the target
-var target = 5
-for (i, 0, 10, 1) {
-    if (i == target) {
-        print "Found it!"
-        break
-    }
-}
-```
-
-Continue
-
-Skips the rest of the current iteration and jumps directly to the next one (checking the condition in `while`, or incrementing in `for`).
-
-```aegis
-// Print only odd numbers
-for (i, 0, 10, 1) {
-    // If even, skip printing
-    if (i % 2 == 0) { 
-        continue 
-    }
-    print i
-}
-// Output: 1, 3, 5, 7, 9
 ```
 
 ## Ternary Operator
@@ -234,7 +220,7 @@ print count ?? 100 // 0 (Correct!)
 
 ### Chaining:
 
-```
+```aegis 
 var config = null
 var env = null
 var port = config ?? env ?? 8080
