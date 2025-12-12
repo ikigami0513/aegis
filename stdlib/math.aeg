@@ -1,98 +1,52 @@
 // ==========================================
 //  AEGIS STANDARD LIBRARY - MATH MODULE
+//  (Backed by Native Rust Implementation)
 // ==========================================
 
 namespace Math {
 
     // --- Constants ---
+    var PI = 3.141592653589793
+    var TAU = 6.283185307179586
+    var E = 2.718281828459045
 
-    var PI = 3.1415926535
-    var TAU = 6.283185307
-    var E = 2.7182818284
+    // --- Native Wrappers ---
 
-    // --- Basic Utilities ---
+    func abs(n) { return math_abs(n) }
+    
+    func ceil(n) { return math_ceil(n) }
+    
+    func floor(n) { return math_floor(n) }
+    
+    func round(n) { return math_round(n) }
+    
+    func sqrt(n) { return math_sqrt(n) }
+    
+    func pow(base, exp) { return math_pow(base, exp) }
+    
+    func sin(rad) { return math_sin(rad) }
+    
+    func cos(rad) { return math_cos(rad) }
+    
+    func tan(rad) { return math_tan(rad) }
+    
+    func acos(n) { return math_acos(n) }
+    
+    func asin(n) { return math_asin(n) }
+    
+    func atan(n) { return math_atan(n) }
 
-    // Returns the absolute value of n
-    func abs(n) {
-        if (n < 0) {
-            return 0 - n
-        }
-        return n
-    }
+    // --- Aegis Utils (Composed) ---
 
-    // Returns the maximum of two numbers
-    func max(a, b) {
-        if (a > b) { return a }
-        return b
-    }
-
-    // Returns the minimum of two numbers
     func min(a, b) {
         if (a < b) { return a }
         return b
     }
 
-    // Returns true if n is even
-    func is_even(n) {
-        return (n % 2) == 0
+    func max(a, b) {
+        if (a > b) { return a }
+        return b
     }
-
-    // Returns true if n is odd
-    func is_odd(n) {
-        return (n % 2) != 0
-    }
-
-    // --- Arithmetic & Algebra ---
-
-    // Calculates base raised to the power of exponent (integer only)
-    func pow(base, exponent) {
-        if (exponent == 0) { return 1 }
-        if (exponent < 0) { return 0 } // Float support needed for negative exponent
-        
-        var result = 1
-
-        foreach (i in 0..exponent) {
-            result *= base
-        }
-
-        return result
-    }
-
-    // Calculates the square root of n using Newton-Raphson method
-    // Approximation: x(n+1) = 0.5 * (x(n) + N / x(n))
-    func sqrt(n) {
-        if (n < 0) { return -1 } // Error code for imaginary numbers
-        if (n == 0) { return 0 }
-        
-        var x = n
-
-        // 10 iterations is usually enough for decent precision
-        foreach (i in 0..10) {
-            x = 0.5 * (x + n / x)
-        }
-
-        return x
-    }
-
-    // Calculates the Greatest Common Divisor (Euclidean algorithm)
-    func gcd(a, b) {
-        while (b != 0) {
-            var temp = b
-            var b = a % b
-            var a = temp
-        }
-        return a
-    }
-
-    // Calculates the Least Common Multiple
-    func lcm(a, b) {
-        if (a == 0) { return 0 }
-        if (b == 0) { return 0 }
-        var prod = a * b
-        return Math.abs(prod) / Math.gcd(a, b)
-    }
-
-    // --- Trigonometry ---
 
     // Converts degrees to radians
     func to_radians(degrees) {
@@ -103,62 +57,13 @@ namespace Math {
     func to_degrees(radians) {
         return radians * (180.0 / Math.PI)
     }
-
-    // Calculates sine of x (radians) using Taylor Series
-    // Precision: 10 iterations
-    func sin(x) {
-        // 1. Normalisation : on ramène x entre 0 et TAU
-        // Grâce au support du modulo sur les floats dans ton interpréteur
-        var angle = x % TAU
-        
-        var term = angle
-        var sum = angle
-        var n = 1
-        
-        // Le calcul se fait maintenant sur un petit nombre, donc précis !
-        foreach (i in 0..10) {
-            var divisor = (2 * n) * (2 * n + 1)
-            term = 0 - (term * angle * angle)
-            term = term / divisor
-            
-            sum = sum + term
-            n = n + 1
+    
+    func gcd(a, b) {
+        while (b != 0) {
+            var temp = b
+            b = a % b
+            a = temp
         }
-
-        return sum
-    }
-
-    // Calculates cosine of x (radians) using Taylor Series
-    func cos(x) {
-        // 1. Normalisation
-        var angle = x % TAU
-
-        var term = 1
-        var sum = 1
-        var n = 1
-        
-        foreach (i in 0..10) {
-            var divisor = (2 * n - 1) * (2 * n)
-            term = 0 - (term * angle * angle)
-            term = term / divisor
-            
-            sum = sum + term
-            n = n + 1
-        }
-
-        return sum
-    }
-
-    // Calculates tangent of x (radians)
-    func tan(x) {
-        var c = Math.cos(x)
-
-        // Avoid division by zero
-        if (Math.abs(c) < 0.000001) {
-            // Technically undefined/infinity, return a large number
-            return 99999999
-        }
-
-        return Math.sin(x) / c
+        return a
     }
 }

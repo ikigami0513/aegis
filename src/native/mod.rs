@@ -20,6 +20,7 @@ pub fn init_registry() {
     crypto::register(&mut map);
     date::register(&mut map);
     socket::register(&mut map);
+    math::register(&mut map);
 
     let _ = REGISTRY.set(RwLock::new(map));
 }
@@ -78,3 +79,4 @@ mod regex;
 mod crypto;
 mod date;
 mod socket;
+mod math;
