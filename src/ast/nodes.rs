@@ -38,6 +38,7 @@ pub enum Expression {
     Or(Box<Expression>, Box<Expression>),
     Not(Box<Expression>),
     Ternary(Box<Expression>, Box<Expression>, Box<Expression>),
+    NullCoalescing(Box<Expression>, Box<Expression>),
     BitAnd(Box<Expression>, Box<Expression>),
     BitOr(Box<Expression>, Box<Expression>),
     BitXor(Box<Expression>, Box<Expression>),

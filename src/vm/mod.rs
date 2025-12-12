@@ -367,18 +367,25 @@ impl VM {
             OpCode::GetGlobal => {
                 let idx = self.read_byte() as usize;
     
-                // Logique de récupération avec Fallback
-                let val = if idx < self.globals.len() && !matches!(self.globals[idx], Value::Null) {
-                    // Cas nominal : La valeur est déjà là
+                // 1. On récupère la valeur brute. 
+                // Si l'index est hors limite (ne devrait pas arriver si le compilateur est bon), on met Null.
+                let mut val = if idx < self.globals.len() {
                     self.globals[idx].clone()
                 } else {
-                    // Cas "Lazy" : On vérifie si c'est une nouvelle native
-                    self.resolve_lazy_native(idx)
-                        .ok_or_else(|| format!("Variable globale non définie (ID {})", idx))?
+                    Value::Null
                 };
 
+                // 2. Si la valeur est Null, on vérifie si c'est une fonction Native "paresseuse" (Lazy)
+                if matches!(val, Value::Null) {
+                    if let Some(native_val) = self.resolve_lazy_native(idx) {
+                        val = native_val;
+                    }
+                    // SINON : C'est juste une variable qui contient Null. Ce n'est PAS une erreur.
+                    // On laisse val à Value::Null.
+                }
+
                 self.push(val);
-            }
+            },
             OpCode::GetLocal => {
                 let slot_idx = self.read_byte() as usize;
                 let abs_index = self.current_frame().slot_offset + slot_idx;

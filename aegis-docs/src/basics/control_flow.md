@@ -139,3 +139,46 @@ Ternary operators can be nested, although this can reduce readability.
 ```aegis
 var category = (score > 90) ? "A" : ((score > 50) ? "B" : "C")
 ```
+
+## Null Coalescing Operator (`??`)
+
+The null coalescing operator `??` is a logical operator that returns its right-hand side operand when its left-hand side operand is `null`, and returns its left-hand side operand otherwise.
+
+It is cleaner and safer than using `||` because it only checks for `null`, not `false` or `0`.
+
+### Syntax
+
+```aegis
+left_expr ?? default_value
+```
+
+### Examples
+
+Basic Usage:
+
+```aegis
+var user_input = null
+var username = user_input ?? "Guest"
+print username // "Guest"
+```
+
+Difference with `||`:
+
+```aegis
+var count = 0
+
+// || considers 0 as false
+print count || 100 // 100 (Unwanted behavior?)
+
+// ?? only cares about null
+print count ?? 100 // 0 (Correct!)
+```
+
+### Chaining:
+
+```
+var config = null
+var env = null
+var port = config ?? env ?? 8080
+print port // 8080
+```

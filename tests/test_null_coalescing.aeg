@@ -1,0 +1,24 @@
+print "--- TEST NULL COALESCING ---"
+
+var a = null
+var b = "Valeur B"
+var c = "Valeur C"
+
+// Cas 1 : Gauche est Null -> Prend Droite
+var res1 = a ?? b
+print "null ?? b -> " + res1
+
+// Cas 2 : Gauche n'est pas Null -> Garde Gauche
+var res2 = c ?? b
+print "c ?? b    -> " + res2
+
+// Cas 3 : Distinction avec False (Important !)
+var faux = false
+var res3 = faux ?? "Erreur"
+print "false ?? 'Erreur' -> " + res3
+// Si c'était un '||', ça aurait affiché 'Erreur'. 
+// Avec '??', ça doit afficher 'false'.
+
+// Cas 4 : Chaining
+var res4 = null ?? null ?? "Final"
+print "null ?? null ?? Final -> " + res4

@@ -550,7 +550,7 @@ impl Parser {
 
     fn parse_ternary(&mut self) -> Result<Value, String> {
         // On commence par parser le niveau inférieur (OR, AND...)
-        let mut expr = self.parse_logical_or()?;
+        let mut expr = self.parse_null_coalescing()?;
 
         // Si on rencontre '?', c'est un ternaire
         if self.match_token(TokenKind::Question) {
@@ -560,6 +560,19 @@ impl Parser {
 
             // Format JSON : ["?", condition, true_expr, false_expr]
             expr = json!(["?", expr, true_branch, false_branch]);
+        }
+
+        Ok(expr)
+    }
+
+    fn parse_null_coalescing(&mut self) -> Result<Value, String> {
+        let mut expr = self.parse_logical_or()?;
+
+        while self.match_token(TokenKind::DoubleQuestion) {
+            let right = self.parse_logical_or()?;
+
+            let line = self.current_line();
+            expr = json!(["??", line, expr, right]);
         }
 
         Ok(expr)

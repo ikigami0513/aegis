@@ -279,6 +279,47 @@ impl Compiler {
                 self.patch_jump(end_jump);
             },
 
+            Expression::NullCoalescing(left, right) => {
+                // 1. Evaluer Gauche
+                self.compile_expression(*left); // Pile: [val]
+                
+                // 2. Dupliquer pour le test
+                self.emit_op(OpCode::Dup);      // Pile: [val, val]
+                
+                // 3. Charger Null et Comparer
+                let null_idx = self.chunk.add_constant(Value::Null);
+                self.emit_op(OpCode::LoadConst);
+                self.emit_byte(null_idx);       // Pile: [val, val, null]
+                self.emit_op(OpCode::Equal);    // Pile: [val, is_null]
+                
+                // 4. Si c'est FAUX (donc pas null), on saute le bloc "Remplacement"
+                let jump_over = self.emit_jump(OpCode::JumpIfFalse);
+                
+                // --- CHEMIN : C'EST NULL (is_null était Vrai) ---
+                // Le JumpIfFalse n'a pas sauté. 
+                // IMPORTANT : Dans ta VM, JumpIfFalse fait un PEEK sur la condition.
+                // La pile est donc : [val (null), is_null (true)]
+                
+                self.emit_op(OpCode::Pop); // On retire le booléen 'true'
+                self.emit_op(OpCode::Pop); // On retire la valeur 'null'
+                
+                // On évalue la partie droite
+                self.compile_expression(*right); // Pile: [res_droite]
+                
+                // On doit sauter par-dessus le code de nettoyage de l'autre branche
+                let jump_end = self.emit_jump(OpCode::Jump);
+                
+                // --- CHEMIN : CE N'EST PAS NULL (is_null était Faux) ---
+                self.patch_jump(jump_over); // On atterrit ici si le jump a été pris
+                
+                // Pile : [val, is_null (false)]
+                self.emit_op(OpCode::Pop); // On retire le booléen 'false'
+                // Pile : [val] -> C'est ce qu'on veut !
+                
+                // --- FIN ---
+                self.patch_jump(jump_end);
+            },
+
             Expression::List(exprs) => {
                 for expr in exprs.iter() {
                     self.compile_expression(expr.clone());

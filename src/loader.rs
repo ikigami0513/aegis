@@ -58,6 +58,11 @@ pub fn parse_expression(json_expr: &JsonValue) -> Result<Expression, String> {
                         Box::new(else_branch)
                     ))
                 },
+                "??" => {
+                    let left = parse_expression(&array[2])?;
+                    let right = parse_expression(&array[3])?;
+                    Ok(Expression::NullCoalescing(Box::new(left), Box::new(right)))
+                },
                 
                 // --- Comparaison ---
                 "==" => Ok(Expression::Equal(Box::new(parse_expression(&array[1])?), Box::new(parse_expression(&array[2])?))),

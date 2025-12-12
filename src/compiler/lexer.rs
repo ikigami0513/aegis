@@ -26,6 +26,7 @@ pub enum TokenKind {
     Arrow,
     Super,
     Question,
+    DoubleQuestion,
     Const
 }
 
@@ -116,7 +117,14 @@ impl<'a> Lexer<'a> {
                 }
                 '?' => {
                     self.chars.next();
-                    self.add_token(&mut tokens, TokenKind::Question);
+
+                    if let Some(&'?') = self.chars.peek() {
+                        self.chars.next();
+                        self.add_token(&mut tokens, TokenKind::DoubleQuestion);
+                    }
+                    else {
+                        self.add_token(&mut tokens, TokenKind::Question);
+                    }
                 },
                 '+' => {
                     self.chars.next();
