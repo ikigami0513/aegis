@@ -96,6 +96,7 @@ impl Parser {
             TokenKind::Switch => self.parse_switch(),
             TokenKind::Namespace => self.parse_namespace(),
             TokenKind::Const => self.parse_const(),
+            TokenKind::ForEach => self.parse_foreach(),
             
             TokenKind::Identifier(_) | TokenKind::Super => {
                 let line = self.current_line();
@@ -368,6 +369,33 @@ impl Parser {
         
         // JSON: ["const", line, name, expr]
         Ok(json!(["const", line, name, expr]))
+    }
+
+    fn parse_foreach(&mut self) -> Result<Value, String> {
+        let line = self.current_line();
+        self.advance(); // Eat 'foreach'
+        
+        self.consume(TokenKind::LParen, "Expect '(' after 'foreach'")?;
+        
+        // Nom de la variable (ex: "elem")
+        let var_name = if let TokenKind::Identifier(n) = &self.advance().kind {
+            n.clone()
+        } else {
+            return Err("Expect variable name in foreach".into());
+        };
+        
+        self.consume(TokenKind::In, "Expect 'in' after variable name")?;
+        
+        // L'expression itérable (ex: "mylist" ou "[1, 2]")
+        let iterable = self.parse_expression()?;
+        
+        self.consume(TokenKind::RParen, "Expect ')' after loop header")?;
+        
+        // Le corps
+        let body = self.parse_block()?;
+        
+        // JSON: ["foreach", line, var_name, iterable, body]
+        Ok(json!(["foreach", line, var_name, iterable, body]))
     }
 
     fn parse_decorated_function(&mut self) -> Result<Value, String> {

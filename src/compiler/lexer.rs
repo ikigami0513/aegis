@@ -27,7 +27,8 @@ pub enum TokenKind {
     Super,
     Question,
     DoubleQuestion,
-    Const
+    Const,
+    ForEach, In
 }
 
 #[derive(Debug, Clone)]
@@ -365,6 +366,8 @@ impl<'a> Lexer<'a> {
             "super" => TokenKind::Super,
             "enum" => TokenKind::Enum,
             "const" => TokenKind::Const,
+            "foreach" => TokenKind::ForEach,
+            "in" => TokenKind::In,
             _ => TokenKind::Identifier(s),
         };
 

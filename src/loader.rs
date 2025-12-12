@@ -337,6 +337,14 @@ pub fn parse_statement_json(json_instr: &JsonValue) -> Result<Statement, String>
             let expr = parse_expression(&array[3])?;
             Ok(Instruction::Const(name, expr))
         },
+
+        "foreach" => {
+            let var_name = array[2].as_str().unwrap().to_string();
+            let iterable = parse_expression(&array[3])?;
+            let body = parse_block(&array[4])?;
+                    
+            Ok(Instruction::ForEach(var_name, iterable, body))
+        },
         
         _ => Err(format!("Instruction inconnue: {}", command)),
     }?;

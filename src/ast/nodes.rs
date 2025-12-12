@@ -104,7 +104,8 @@ pub enum Instruction {
     },
     Throw(Expression),
     Continue,
-    Const(String, Expression)
+    Const(String, Expression),
+    ForEach(String, Expression, Vec<Statement>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

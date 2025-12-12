@@ -1,0 +1,22 @@
+print "--- TEST FOREACH ---"
+
+var list = [10, 20, 30]
+
+print "1. Liste :"
+foreach (n in list) {
+    print "Item: " + n
+}
+
+print "\n2. String :"
+foreach (char in "ABC") {
+    print "Lettre: " + char
+}
+
+print "\n3. Imbrication :"
+var matrix = [ [1, 2], [3, 4] ]
+foreach (row in matrix) {
+    print "Row start"
+    foreach (cell in row) {
+        print " > " + cell
+    }
+}

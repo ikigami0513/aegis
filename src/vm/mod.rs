@@ -1177,7 +1177,21 @@ impl VM {
             },
 
             Value::String(s) => match method_name.as_str() {
-                "len" => Value::Integer(s.len() as i64),
+                "len" => Value::Integer(s.chars().count() as i64),
+                "at" => {
+                    // Récupération de l'index
+                    let idx = args[0].as_int().unwrap_or(0);
+                    
+                    if idx < 0 {
+                        Value::Null
+                    } else {
+                        // On utilise chars().nth() pour gérer correctement l'UTF-8 (accents, emojis)
+                        match s.chars().nth(idx as usize) {
+                            Some(c) => Value::String(c.to_string()),
+                            None => Value::Null,
+                        }
+                    }
+                },
                 
                 // --- Transformation ---
                 "trim" => {

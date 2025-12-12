@@ -49,6 +49,52 @@ for (i, 0, 10, 2) {
 }
 ```
 
+## The Foreach Loop
+
+The `foreach` loop provides a simplified syntax for iterating over collections like Lists or Strings. It automatically handles the index and bounds checking for you.
+
+### Syntax
+
+```aegis
+foreach (variable in iterable) {
+    // code block
+}
+```
+
+### Iterating over Lists
+
+```aegis
+var users = ["Alice", "Bob", "Charlie"]
+
+foreach (user in users) {
+    print "Hello, " + user + "!"
+}
+```
+
+### Iterating over Strings
+
+You can also iterate over a string character by character.
+
+```aegis
+foreach (char in "Aegis") {
+    print char
+}
+```
+
+### Nesting
+
+Foreach loops can be nested. The loop variable is local to its specific block, preventing conflicts.
+
+```aegis
+var matrix = [ [1, 2], [3, 4] ]
+
+foreach (row in matrix) {
+    foreach (cell in row) {
+        print cell
+    }
+}
+```
+
 ## Switch
 
 The switch statement simplifies long `if`/`else` chains. Aegis switches perform an implicit break (no fall-through).

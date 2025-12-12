@@ -1020,6 +1020,113 @@ impl Compiler {
                     self.global_constants.push(name);
                 }
             },
+            Instruction::ForEach(iter_var_name, iterable, body) => {
+                // On ouvre un scope pour isoler les variables internes (__seq, __idx)
+                self.scope_depth += 1;
+                
+                // 1. Initialisation : var __seq = iterable
+                let seq_var = format!("__seq_{}", self.locals.len()); // Nom unique
+                self.compile_expression(iterable);
+                
+                // On stocke __seq comme locale
+                let seq_idx = self.locals.len() as u8;
+                self.locals.insert(seq_var.clone(), LocalInfo { index: seq_idx, is_const: true }); // Const pour éviter modif
+                // La valeur est sur la pile, elle devient __seq
+                
+                // 2. Initialisation : var __idx = 0
+                let idx_var = format!("__idx_{}", self.locals.len());
+                self.emit_op(OpCode::LoadConst);
+                let zero_const = self.chunk.add_constant(Value::Integer(0));
+                self.emit_byte(zero_const);
+                
+                let idx_idx = self.locals.len() as u8;
+                self.locals.insert(idx_var.clone(), LocalInfo { index: idx_idx, is_const: false });
+                
+                // --- DÉBUT DE LA BOUCLE ---
+                let loop_start = self.chunk.code.len();
+                
+                // 3. Condition : __idx < __seq.len()
+                
+                // A. Charger __idx
+                self.emit_op(OpCode::GetLocal); self.emit_byte(idx_idx);
+                
+                // B. Calculer __seq.len()
+                self.emit_op(OpCode::GetLocal); self.emit_byte(seq_idx);
+                let len_str_idx = self.chunk.add_constant(Value::String("len".to_string()));
+                self.emit_op(OpCode::Method); 
+                self.emit_byte(len_str_idx); 
+                self.emit_byte(0); // 0 args pour len()
+                
+                // C. Comparer <
+                self.emit_op(OpCode::Less);
+                
+                // D. Sauter si faux (Fin de boucle)
+                let exit_jump = self.emit_jump(OpCode::JumpIfFalse);
+                self.emit_op(OpCode::Pop); // Pop le booléen de la condition
+                
+                // Gestion du 'continue' (optionnel, voir LoopState si tu veux supporter continue dans foreach)
+                // Pour faire simple, on push un state For
+                self.loop_stack.push(LoopState::For { continue_patches: Vec::new() });
+
+                // 4. Extraction : var user_var = __seq.at(__idx)
+                
+                // On entre dans le scope utilisateur
+                self.scope_depth += 1; 
+                
+                self.emit_op(OpCode::GetLocal); self.emit_byte(seq_idx); // Charger seq
+                self.emit_op(OpCode::GetLocal); self.emit_byte(idx_idx); // Charger idx
+                let at_str_idx = self.chunk.add_constant(Value::String("at".to_string()));
+                self.emit_op(OpCode::Method);
+                self.emit_byte(at_str_idx);
+                self.emit_byte(1); // 1 arg pour at()
+                
+                // On stocke dans la variable utilisateur 'elem'
+                let user_var_idx = self.locals.len() as u8;
+                self.locals.insert(iter_var_name.clone(), LocalInfo { index: user_var_idx, is_const: false });
+                // La valeur de .at() est sur la pile, elle devient 'elem'
+                
+                // 5. Corps de la boucle
+                // Attention : ne pas appeler compile_scope car on a déjà géré l'ouverture du scope manuellement
+                // On compile juste les instructions
+                for stmt in body {
+                    self.compile_instruction(stmt.kind);
+                }
+                
+                // 6. Nettoyage Variable Utilisateur (Fin d'itération)
+                self.emit_op(OpCode::Pop); // On pop 'elem'
+                self.locals.remove(&iter_var_name);
+                self.scope_depth -= 1;
+                
+                // Label pour 'continue' (C'est ici qu'on atterrit)
+                if let Some(LoopState::For { continue_patches }) = self.loop_stack.pop() {
+                    for patch in continue_patches { self.patch_jump(patch); }
+                }
+
+                // 7. Incrément : __idx = __idx + 1
+                self.emit_op(OpCode::GetLocal); self.emit_byte(idx_idx);
+                self.emit_op(OpCode::LoadConst);
+                let one_const = self.chunk.add_constant(Value::Integer(1));
+                self.emit_byte(one_const);
+                self.emit_op(OpCode::Add);
+                self.emit_op(OpCode::SetLocal); self.emit_byte(idx_idx);
+                self.emit_op(OpCode::Pop); // SetLocal expression result cleanup
+                
+                // 8. Retour au début
+                self.emit_loop(loop_start);
+                
+                // --- FIN DE LA BOUCLE ---
+                self.patch_jump(exit_jump);
+                self.emit_op(OpCode::Pop); // Pop condition result (false)
+                
+                // 9. Nettoyage final (__idx, __seq)
+                self.emit_op(OpCode::Pop); // Pop __idx
+                self.locals.remove(&idx_var);
+                
+                self.emit_op(OpCode::Pop); // Pop __seq
+                self.locals.remove(&seq_var);
+                
+                self.scope_depth -= 1;
+            },
         }
     }
 

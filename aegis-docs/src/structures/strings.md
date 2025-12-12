@@ -16,6 +16,7 @@ print first + " " + second // "Hello World"
 | Method | Description | Example |
 | :--- | :--- | :--- |
 | `.len()` | Returns the length of the string. | `"Hi".len()` (2) |
+| `.at(index)` | Returns the character at the specified index (or `null`). | `"Abc".at(1)` ("b") |
 | `.trim()` | Removes whitespace from both ends. | `" a ".trim()` ("a") |
 | `.upper()` | Converts the entire string to uppercase. | `"aegis".upper()` ("AEGIS") |
 | `.lower()` | Converts the entire string to lowercase. | `"AEGIS".lower()` ("aegis") |
