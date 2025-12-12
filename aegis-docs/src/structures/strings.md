@@ -54,3 +54,19 @@ var items = csv.split(",")
 print items.len()   // 3
 print items.at(0)   // "apple"
 ```
+
+## Multi-line Strings (Template Literals)
+
+You can create strings that span multiple lines using backticks (`` ` ``). This is useful for SQL queries, HTML, or formatted text.
+
+```aegis
+var menu = `
+Welcome to the Game
+1. Start
+2. Options
+3. Exit
+`
+print menu
+```
+
+Backticks also support interpolation ${variable} just like double quotes.

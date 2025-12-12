@@ -1,0 +1,22 @@
+print "--- TEST MULTILINE ---"
+
+/*
+   Ceci est un commentaire
+   sur plusieurs lignes.
+   Il doit être ignoré par le Lexer.
+*/
+print "1. Commentaires OK"
+
+var nom = "Aegis"
+var html = `
+<div>
+    <h1>Bienvenue sur ${nom}</h1>
+    <p>Ceci est une chaine
+    sur plusieurs lignes.</p>
+</div>
+`
+
+print "\n2. Template String :"
+print html
+
+print "Lignes comptees : OK"
