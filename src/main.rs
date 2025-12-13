@@ -1,4 +1,4 @@
-use aegis_core::{compiler, loader, native, plugins};
+use aegis_core::{compiler, loader, native, package_manager, plugins};
 use clap::{Parser, Subcommand};
 use rustyline::DefaultEditor;
 use serde::Deserialize;
@@ -6,9 +6,6 @@ use std::collections::HashMap;
 use std::fs;
 use serde_json::Value as JsonValue;
 use std::path::Path;
-
-mod package_manager;
-
 use aegis_core::vm::VM;
 
 #[derive(Parser)]
@@ -21,22 +18,22 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Exécute un script Aegis (Moteur v2)
+    /// Exécute un script Aegis
     Run {
         /// Le chemin du fichier .aeg
         file: String,
 
         /// Affiche le bytecode généré avant l'exécution
-        #[arg(long, short)] // Permet --debug ou -d
+        #[arg(long, short)]
         debug: bool,
         
         /// Arguments à passer au script (accessibles via System.args())
-        /// Note: L'intégration des args dans la VM v2 reste à faire.
+        /// Ils capturent tout ce qui se trouve après le nom du fichier ou "--"
         #[arg(last = true)]
         args: Vec<String>,
     },
 
-    /// Lance le mode interactif (REPL) - Toujours sur v1 pour l'instant
+    /// Lance le mode interactif (REPL)
     Repl,
 
     /// [APM] Installe un paquet depuis le registre
@@ -48,14 +45,20 @@ enum Commands {
     },
 
     /// [APM] Publie le paquet courant
-    Publish,
+    Publish {
+        /// Cible OS spécifique (ex: linux, windows)
+        #[arg(long)] 
+        os: Option<String>,
+        
+        /// Architecture cible (ex: x86_64, arm64)
+        #[arg(long)]
+        arch: Option<String>
+    },
 
     /// [APM] Se connecte au registre
     Login {
         token: String
     },
-    
-    // La commande Vm a été supprimée.
 }
 
 #[derive(Deserialize)]
@@ -77,84 +80,76 @@ struct PackageInfo {
     version: String,
 }
 
+// Charge les plugins natifs basés sur le fichier aegis.toml (Legacy support pour les DLLs locales)
 fn load_config() {
     if let Ok(content) = fs::read_to_string("aegis.toml") {
-        // println!("📝 Configuration trouvée..."); // Moins verbeux pour l'exécution normale
         let config: ProjectConfig = toml::from_str(&content).unwrap_or_else(|_| ProjectConfig { dependencies: None });
 
         if let Some(deps) = config.dependencies {
             for (name, _version_req) in deps {
-                // println!("📦 Résolution de la dépendance '{}' ({})", name, version_req);
-
                 let package_path = Path::new("packages").join(&name);
 
                 if !package_path.exists() {
-                    eprintln!("❌ Erreur : Le paquet '{}' n'est pas trouvé dans ./packages/", name);
-                    eprintln!("   💡 Astuce : Lancez 'aegis add {}' pour l'installer.", name);
-                    continue;
+                    // On ne crie pas si le dossier n'existe pas, car ça peut être une dépendance pure source (.aeg)
+                    // gérée par le compilateur via l'OpCode::Import
+                    continue; 
                 }
 
-                match resolve_library_path(&package_path) {
-                    Ok(final_path) => {
-                        // println!("   🔌 Chargement binaire : {:?}", final_path);
-                        if let Err(e) = plugins::load_plugin(final_path.to_str().unwrap()) {
-                            eprintln!("   ❌ Echec du chargement : {}", e);
-                        }
-                    },
-                    Err(e) => eprintln!("   ❌ Erreur de configuration du paquet '{}': {}", name, e),
+                // Si on trouve une librairie native, on la charge
+                if let Ok(final_path) = resolve_library_path(&package_path) {
+                    if let Err(e) = plugins::load_plugin(final_path.to_str().unwrap()) {
+                        eprintln!("   ⚠️ Warning chargement plugin '{}': {}", name, e);
+                    }
                 }
             }
         }
     }
 }
 
+// Tente de trouver un .dll/.so dans le dossier du paquet
 fn resolve_library_path(path: &Path) -> Result<std::path::PathBuf, String> {
-    if path.is_dir() {
-        let manifest_path = path.join("aegis.toml");
-        
-        if !manifest_path.exists() {
-            return Err(format!("Manifeste 'aegis.toml' manquant dans {:?}", path));
-        }
-
-        let content = fs::read_to_string(&manifest_path).map_err(|e| e.to_string())?;
-        let manifest: PackageManifest = toml::from_str(&content)
-            .map_err(|e| format!("Manifeste corrompu: {}", e))?;
-
-        let current_os = std::env::consts::OS;
-
-        if let Some(targets) = manifest.targets {
-            if let Some(binary_file) = targets.get(current_os) {
-                let binary_path = path.join(binary_file);
-                if binary_path.exists() {
-                    return Ok(binary_path);
-                } else {
-                    return Err(format!("Le binaire spécifié pour {} ({}) est introuvable sur le disque", current_os, binary_file));
+    // 1. Essayer via le manifest (si présent)
+    let manifest_path = path.join("aegis.toml");
+    if manifest_path.exists() {
+        if let Ok(content) = fs::read_to_string(&manifest_path) {
+            if let Ok(manifest) = toml::from_str::<PackageManifest>(&content) {
+                let current_os = std::env::consts::OS;
+                if let Some(targets) = manifest.targets {
+                    if let Some(binary_file) = targets.get(current_os) {
+                        return Ok(path.join(binary_file));
+                    }
                 }
-            } else {
-                return Err(format!("Ce paquet ne supporte pas votre système ({})", current_os));
             }
-        } else {
-            return Err("Section [targets] manquante dans le paquet".into());
         }
     }
     
-    if path.is_file() {
-        return Ok(path.to_path_buf());
+    // 2. Fallback : scan bourrin du dossier pour trouver un .so/.dll/.dylib
+    if let Ok(entries) = fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if let Some(ext) = p.extension() {
+                if ext == "dll" || ext == "so" || ext == "dylib" {
+                    return Ok(p);
+                }
+            }
+        }
     }
 
-    Err(format!("Chemin invalide : {:?}", path))
+    Err("Aucun binaire trouvé".into())
 }
 
 fn main() -> Result<(), String> {
     native::init_registry();
+    
+    // On charge les plugins natifs AVANT de lancer la VM
     load_config();
 
     let cli = Cli::parse();
 
     match &cli.command {
-        // La commande RUN utilise maintenant la VM v2
-        Some(Commands::Run { file, debug, args: _ }) => {
-            run_file(file, *debug)
+        Some(Commands::Run { file, debug, args }) => {
+            // On passe les args (clonés pour ownership) à run_file
+            run_file(file, *debug, args.clone())
         }
 
         Some(Commands::Repl) | None => {
@@ -165,11 +160,13 @@ fn main() -> Result<(), String> {
         }
 
         Some(Commands::Add { name, version }) => {
+            // package_manager::install attend &str et Option<String>
             package_manager::install(name, version.clone())
         }
 
-        Some(Commands::Publish) => {
-            package_manager::publish()
+        Some(Commands::Publish { os, arch }) => {
+            // Il faut cloner les Options car `cli` est emprunté dans le match
+            package_manager::publish(os.clone(), arch.clone())
         }
 
         Some(Commands::Login { token }) => {
@@ -179,21 +176,21 @@ fn main() -> Result<(), String> {
 }
 
 // Nouvelle implémentation utilisant la VM v2
-fn run_file(filename: &str, debug: bool) -> Result<(), String> {
+fn run_file(filename: &str, debug: bool, args: Vec<String>) -> Result<(), String> {
     let content = fs::read_to_string(filename)
         .map_err(|e| format!("Impossible de lire {}: {}", filename, e))?;
 
-    // 1. Frontend (Partagé avec la v1) : Source -> AST (JSON)
+    // 1. Frontend 
     let json_data: JsonValue = if filename.ends_with(".aeg") {
         compiler::compile(&content)?
     } else {
         serde_json::from_str(&content).map_err(|e| e.to_string())?
     };
     
-    // 2. Loader (Partagé avec la v1) : AST -> Statements
+    // 2. Loader
     let statements = loader::parse_block(&json_data)?;
 
-    // 3. Compilation v2 : Statements -> Bytecode Chunk
+    // 3. Compilation v2
     let compiler = aegis_core::vm::compiler::Compiler::new();
     let (chunk, global_names) = compiler.compile(statements);
 
@@ -204,34 +201,24 @@ fn run_file(filename: &str, debug: bool) -> Result<(), String> {
         println!("=================================\n");
     }
 
+    // 4. Nettoyage des arguments "--" si présents
     let mut script_args = Vec::new();
-    // On filtre le "--" s'il est présent en premier
-    if let Some(Commands::Run { args, .. }) = &Cli::parse().command {
-        for arg in args {
-            if arg != "--" {
-                script_args.push(arg.clone());
-            }
+    for arg in args {
+        if arg != "--" {
+            script_args.push(arg);
         }
     }
 
-    // 5. Exécution VM
+    // 5. Exécution VM avec les arguments
     let mut vm = VM::new(chunk, global_names, script_args);
     
     vm.run()
 }
 
 fn run_repl() {
-    // 1. Initialisation de l'environnement partagé
-    // On crée la table des noms globaux qui sera partagée entre le compilateur et la VM
     let global_names = std::rc::Rc::new(std::cell::RefCell::new(HashMap::new()));
-    
-    // 2. Initialisation de la VM (à vide)
-    // On crée un chunk vide juste pour initialiser la VM
     let empty_chunk = aegis_core::chunk::Chunk::new();
     let mut vm = VM::new(empty_chunk, global_names.clone(), vec![]);
-
-    println!("Aegis v0.2.0 REPL");
-    println!("Type 'exit' to quit.");
 
     let mut rl = DefaultEditor::new().unwrap();
 
@@ -244,25 +231,17 @@ fn run_repl() {
                 let source = line.trim();
                 if source == "exit" || source == "quit" { break; }
                 
-                // --- PIPELINE v2 ---
-
-                // A. Compilation v1 (Source -> JSON AST)
+                // Pipeline v2 pour REPL
                 match compiler::compile(source) {
                     Ok(json_ast) => {
-                        // B. Loader (JSON -> Instructions)
                         match loader::parse_block(&json_ast) {
                             Ok(statements) => {
-                                // C. Compilation v2 (Instructions -> Bytecode)
-                                // IMPORTANT : On utilise 'new_with_globals' pour que le compilateur
-                                // connaisse les variables définies aux lignes précédentes !
+                                // Important: préserver le contexte global
                                 let mut repl_compiler = aegis_core::vm::compiler::Compiler::new_with_globals(global_names.clone());
-                                
-                                // On force le scope global pour que 'var x = 1' soit persistant (SetGlobal)
                                 repl_compiler.scope_depth = 0; 
                                 
                                 let (chunk, _) = repl_compiler.compile(statements);
 
-                                // D. Exécution (Injection dans la VM existante)
                                 if let Err(e) = vm.execute_chunk(chunk) {
                                     println!("Runtime Error: {}", e);
                                 }

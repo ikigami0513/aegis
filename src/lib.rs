@@ -7,5 +7,6 @@ pub mod stdlib;
 pub mod vm;
 pub mod chunk;
 pub mod opcode;
+pub mod package_manager;
 
 pub use ast::{Value, NativeFn};
