@@ -1,0 +1,18 @@
+interface Flyable {
+    fly()
+    land(speed)
+}
+
+class Bird implements Flyable {
+    fly() {
+        print "Flap flap"
+    }
+    
+    // Si je commente land, ça doit crasher
+    land(speed) {
+        print "Landing at " + speed
+    }
+}
+
+var b = new Bird()
+b.fly()

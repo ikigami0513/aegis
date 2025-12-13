@@ -101,6 +101,7 @@ impl Parser {
             TokenKind::Namespace => self.parse_namespace(),
             TokenKind::Const => self.parse_const(),
             TokenKind::ForEach => self.parse_foreach(),
+            TokenKind::Interface => self.parse_interface(),
             
             // --- GESTION DES EXPRESSIONS ET ASSIGNATIONS ---
             TokenKind::Identifier(_) | TokenKind::Super | TokenKind::LParen => {
@@ -416,6 +417,37 @@ impl Parser {
         Ok(json!(["foreach", line, var_name, iterable, body]))
     }
 
+    fn parse_interface(&mut self) -> Result<Value, String> {
+        let line = self.current_line();
+        self.consume(TokenKind::Interface, "Expect 'interface'")?;
+        
+        let name = if let TokenKind::Identifier(n) = &self.advance().kind { n.clone() } else { return Err("Interface Name".into()); };
+        
+        self.consume(TokenKind::LBrace, "{")?;
+        
+        let mut methods = Vec::new();
+
+        while !self.check(&TokenKind::RBrace) && !self.is_at_end() {
+            // Syntaxe : func nom(args); (Pas de corps !)
+            // Ou juste : nom(args);
+            
+            // On accepte 'func' optionnel pour cohérence
+            self.match_token(TokenKind::Func); 
+            
+            let m_name = if let TokenKind::Identifier(n) = &self.advance().kind { n.clone() } else { return Err("Method Name".into()); };
+            
+            let m_params = self.parse_params_list()?;
+            
+            // On stocke juste [name, params]
+            methods.push(json!([m_name, m_params]));
+        }
+        
+        self.consume(TokenKind::RBrace, "}")?;
+        
+        // JSON: ["interface", line, name, methods]
+        Ok(json!(["interface", line, name, methods]))
+    }
+
     fn parse_decorated_function(&mut self) -> Result<Value, String> {
         let line = self.current_line();
         self.advance(); // @
@@ -551,13 +583,29 @@ impl Parser {
             return Err("Expect Class Name".into()); 
         };
         
-        // 2. Héritage optionnel
+        // 2. Extends (Parent)
         let mut parent = Value::Null;
         if self.match_token(TokenKind::Extends) {
             if let TokenKind::Identifier(n) = &self.advance().kind { 
                 parent = json!(n); 
             } else {
                 return Err("Expect Parent Class Name".into());
+            }
+        }
+
+        // 3. Implements (Interfaces)
+        let mut interfaces = Vec::new();
+        if self.match_token(TokenKind::Implements) {
+            loop {
+                if let TokenKind::Identifier(n) = &self.advance().kind {
+                    interfaces.push(json!(n));
+                } else {
+                    return Err("Expected interface name after 'implements'".into());
+                }
+
+                if !self.match_token(TokenKind::Comma) {
+                    break;
+                }
             }
         }
         
@@ -634,9 +682,9 @@ impl Parser {
         // ["class", line, name, methods, parent, fields, visibilities, is_final]
         
         let result = if parent.is_null() {
-            json!(["class", line, name, methods, null, fields, visibilities, is_class_final])
+            json!(["class", line, name, methods, null, fields, visibilities, is_class_final, interfaces])
         } else {
-            json!(["class", line, name, methods, parent, fields, visibilities, is_class_final])
+            json!(["class", line, name, methods, parent, fields, visibilities, is_class_final, interfaces])
         };
 
         Ok(result)

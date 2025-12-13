@@ -29,6 +29,12 @@ pub struct PropertyData {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct InterfaceData {
+    pub name: String,
+    pub methods: HashMap<String, usize>
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ClassData {
     pub name: String,
     pub parent: Option<String>,
@@ -44,6 +50,9 @@ pub struct ClassData {
 
     pub is_final: bool,
     pub final_methods: HashSet<String>,
+
+    pub interfaces: Vec<Rc<InterfaceData>>,
+    pub interfaces_names: Vec<String>,
 
     pub visibilities: HashMap<String, Visibility>,
 }
@@ -66,6 +75,7 @@ pub enum Value {
     Function(Rc<FunctionData>), 
     Class(Rc<ClassData>),
     Instance(Rc<RefCell<InstanceData>>),
+    Interface(Rc<InterfaceData>),
     Native(String),
     Range(i64, i64, i64),
     Null
@@ -108,6 +118,7 @@ impl fmt::Display for Value {
                 // Accès direct au nom de la classe
                 write!(f, "<Instance of {}>", borrow.class.name)
             },
+            Value::Interface(interface) => write!(f, "<Interface {}>", interface.name),
             Value::Native(name) => write!(f, "<Native Fn {}>", name),
             Value::Range(s, e, step) => write!(f, "{}..{} (step {})", s, e, step),
         }

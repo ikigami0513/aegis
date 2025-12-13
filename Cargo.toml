@@ -1,6 +1,6 @@
 [package]
 name = "aegis-lang"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2024"
 authors = ["Ethan Rucar <ethan.rucar@gmail.com>"]
 description = "A dynamic, interpreted programming language with a high-performance bytecode VM."

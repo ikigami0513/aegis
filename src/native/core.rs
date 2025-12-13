@@ -101,6 +101,7 @@ fn type_of(args: Vec<Value>) -> Result<Value, String> {
                                     
         Value::Function(..) => "function".to_string(),
         Value::Class { .. } => "class".to_string(),
+        Value::Interface(_) => "interface".to_string(),
                                     
         // Pour l'instance, on récupère le nom dynamiquement
         Value::Instance(i) => {

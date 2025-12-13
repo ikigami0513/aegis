@@ -1,5 +1,5 @@
 use serde_json::Value as JsonValue;
-use crate::ast::{ClassDefinition, Expression, Instruction, Statement, Value, nodes::{ClassField, ClassProperty}, value::Visibility};
+use crate::ast::{ClassDefinition, Expression, Instruction, Statement, Value, nodes::{ClassField, ClassProperty, InterfaceDefinition, InterfaceMethod}, value::Visibility};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 pub fn parse_block(block_json: &JsonValue) -> Result<Vec<Statement>, String> {
@@ -266,6 +266,44 @@ pub fn parse_statement_json(json_instr: &JsonValue) -> Result<Statement, String>
             let body = parse_block(&array[5])?;
             Ok(Instruction::Function { name, params, ret_type, body })
         },
+
+        "interface" => {
+            let _line = array[1].as_u64().unwrap() as usize;
+            let name = array[2].as_str().unwrap().to_string();
+            
+            // On vérifie que le tableau de méthodes est valide
+            let methods_arr = array[3].as_array().ok_or("Invalid interface methods array")?;
+            
+            let mut methods = Vec::new();
+            
+            for m in methods_arr {
+                let m_data = m.as_array().ok_or("Invalid method data")?;
+                
+                // Index 0 : Le nom de la méthode
+                let m_name = m_data[0].as_str().ok_or("Invalid method name")?.to_string();
+                
+                // Index 1 : Les paramètres (C'est ici que tu avais l'erreur "Invalid params array")
+                let params_json = m_data[1].as_array().ok_or("Invalid params array")?;
+                
+                let mut params = Vec::new();
+                for p in params_json {
+                    // Chaque paramètre est un tableau [nom, type] ou [nom, null]
+                    let p_arr = p.as_array().ok_or("Invalid param structure")?;
+                    let p_name = p_arr[0].as_str().unwrap().to_string();
+                    
+                    let p_type = if p_arr.len() > 1 && !p_arr[1].is_null() {
+                        Some(p_arr[1].as_str().unwrap().to_string())
+                    } else {
+                        None
+                    };
+                    params.push((p_name, p_type));
+                }
+                
+                methods.push(InterfaceMethod { name: m_name, params });
+            }
+            
+            Ok(Instruction::Interface(InterfaceDefinition { name, methods }))
+        },
         
         "class" => {
             // ["class", line, name, methods, parent, fields, visibilities]
@@ -404,6 +442,12 @@ pub fn parse_statement_json(json_instr: &JsonValue) -> Result<Statement, String>
                 array[7].as_bool().unwrap_or(false)
             } else { false };
 
+            let interfaces_json = if array.len() > 8 { array[8].as_array() } else { None };
+            let mut interfaces = Vec::new();
+            if let Some(arr) = interfaces_json {
+                for v in arr { interfaces.push(v.as_str().unwrap().to_string()); }
+            }
+
             Ok(Instruction::Class(ClassDefinition {
                 name,
                 parent,
@@ -411,7 +455,8 @@ pub fn parse_statement_json(json_instr: &JsonValue) -> Result<Statement, String>
                 fields,
                 properties,
                 visibilities,
-                is_final: is_class_final
+                is_final: is_class_final,
+                interfaces
             }))
         },
 

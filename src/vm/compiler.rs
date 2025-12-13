@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
 
-use crate::ast::value::{ClassData, FunctionData};
+use crate::ast::value::{ClassData, FunctionData, InterfaceData};
 use crate::ast::{Instruction, Expression, Value};
 use crate::chunk::Chunk;
 use crate::opcode::OpCode;
@@ -646,6 +646,31 @@ impl Compiler {
                 self.emit_byte(id);
             },
 
+            Instruction::Interface(def) => {
+                let mut method_map = HashMap::new();
+                for m in def.methods {
+                    // On stocke l'arité (nombre d'arguments) pour la vérification
+                    // Note : On ajoute 1 pour 'this' implicite si on veut être rigoureux, 
+                    // ou on stocke le nombre brut de params déclarés. Disons brut.
+                    method_map.insert(m.name, m.params.len());
+                }
+                
+                let interface_val = Value::Interface(Rc::new(InterfaceData {
+                    name: def.name.clone(),
+                    methods: method_map
+                }));
+                
+                let const_idx = self.chunk.add_constant(interface_val);
+                
+                // On utilise LoadConst + SetGlobal pour définir l'interface
+                self.emit_op(OpCode::LoadConst);
+                self.emit_byte(const_idx);
+                
+                let global_id = self.resolve_global(&def.name);
+                self.emit_op(OpCode::SetGlobal);
+                self.emit_byte(global_id);
+            },
+
             Instruction::Class(def) => {
                 // 1. COMPILATION DES MÉTHODES
                 // On va stocker les méthodes compilées (Value::Function) dans une HashMap
@@ -848,6 +873,9 @@ impl Compiler {
 
                     is_final: def.is_final,
                     final_methods: final_methods_set,
+
+                    interfaces: Vec::new(),
+                    interfaces_names: def.interfaces,
                     
                     // Nouveaux champs v0.3.0
                     visibilities: def.visibilities, // HashMap<String, Visibility>

@@ -21,9 +21,22 @@ pub struct ClassProperty {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct InterfaceMethod {
+    pub name: String,
+    pub params: Vec<(String, Option<String>)>
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct InterfaceDefinition {
+    pub name: String,
+    pub methods: Vec<InterfaceMethod>
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ClassDefinition {
     pub name: String,
     pub parent: Option<String>,
+    pub interfaces: Vec<String>,
 
     pub methods: HashMap<String, (Vec<(String, Option<String>)>, Vec<Statement>, bool, bool)>,
     pub fields: Vec<ClassField>,
@@ -125,6 +138,7 @@ pub enum Instruction {
     Continue,
     Const(String, Expression),
     ForEach(String, Expression, Vec<Statement>),
+    Interface(InterfaceDefinition)
 }
 
 #[derive(Debug, Clone, PartialEq)]

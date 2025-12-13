@@ -755,7 +755,9 @@ impl VM {
                 let template_val = self.current_frame().chunk().constants[idx as usize].clone();
                 
                 if let Value::Class(template_data) = template_val {
-                    // 1. Resolve Parent
+                    // ---------------------------------------------------------
+                    // 1. RESOLUTION DU PARENT
+                    // ---------------------------------------------------------
                     let mut final_parent_ref = None;
                     if let Some(parent_name) = &template_data.parent {
                         if let Some(parent_val) = self.get_global_by_name(parent_name) {
@@ -769,22 +771,61 @@ impl VM {
                         }
                     }
 
+                    // Check Final Class (Parent)
                     if let Some(parent_rc) = &final_parent_ref {
                         if parent_rc.is_final {
                             return Err(format!("Erreur: La classe '{}' ne peut pas hériter de '{}' car elle est marquée 'final'.", template_data.name, parent_rc.name));
                         }
                     }
 
-                    // 2. VERIFICATION : MÉTHODES FINALES
-                    // Si on a un parent, on vérifie si on essaie d'écraser une méthode finale
-                    if let Some(parent_rc) = &final_parent_ref {
-                        // On itère sur les méthodes de la NOUVELLE classe (Instance + Static)
+                    // ---------------------------------------------------------
+                    // 2. RESOLUTION DES INTERFACES (AVANT de créer la classe)
+                    // ---------------------------------------------------------
+                    let mut resolved_interfaces = Vec::new();
+                    for iface_name in &template_data.interfaces_names {
+                        if let Some(val) = self.get_global_by_name(iface_name) {
+                            if let Value::Interface(iface_rc) = val {
+                                resolved_interfaces.push(iface_rc.clone());
+                            } else {
+                                return Err(format!("'{}' is not an interface", iface_name));
+                            }
+                        } else {
+                            return Err(format!("Interface '{}' not found", iface_name));
+                        }
+                    }
+
+                    // ---------------------------------------------------------
+                    // 3. CREATION DE LA CLASSE (MAINTENANT !)
+                    // ---------------------------------------------------------
+                    let final_class_rc = Rc::new(ClassData {
+                        name: template_data.name.clone(),
+                        parent: template_data.parent.clone(),
+                        parent_ref: final_parent_ref.clone(),
+                        methods: template_data.methods.clone(),
+                        visibilities: template_data.visibilities.clone(),
+                        fields: template_data.fields.clone(), 
+                        properties: template_data.properties.clone(),
                         
-                        // Helper pour checker une map
+                        static_methods: template_data.static_methods.clone(),
+                        static_fields: RefCell::new(HashMap::new()), 
+                        static_properties: template_data.static_properties.clone(),
+
+                        is_final: template_data.is_final,
+                        final_methods: template_data.final_methods.clone(),
+
+                        // On injecte les interfaces résolues
+                        interfaces: resolved_interfaces.clone(),
+                        interfaces_names: template_data.interfaces_names.clone(),
+                    });
+
+                    // ---------------------------------------------------------
+                    // 4. VERIFICATIONS DE CONFORMITÉ
+                    // ---------------------------------------------------------
+
+                    // A. Vérification des Méthodes Finales (Surcharge interdite)
+                    if let Some(parent_rc) = &final_parent_ref {
                         let check_override = |methods_map: &HashMap<String, Value>| -> Result<(), String> {
                             for method_name in methods_map.keys() {
-                                // Est-ce que le parent a cette méthode en 'final' ?
-                                // Note: Il faut remonter toute la chaîne des parents pour être sûr
                                 let mut curr = Some(parent_rc.clone());
                                 while let Some(p) = curr {
                                     if p.final_methods.contains(method_name) {
@@ -795,47 +836,51 @@ impl VM {
                             }
                             Ok(())
                         };
-
                         check_override(&template_data.methods)?;
                         check_override(&template_data.static_methods)?;
                     }
 
-                    // 2. Create the Final Class Structure
-                    let final_class_rc = Rc::new(ClassData {
-                        name: template_data.name.clone(),
-                        parent: template_data.parent.clone(),
-                        parent_ref: final_parent_ref,
-                        methods: template_data.methods.clone(),
-                        visibilities: template_data.visibilities.clone(),
-                        fields: template_data.fields.clone(), // Instance fields initializers
-                        properties: template_data.properties.clone(),
-                        is_final: template_data.is_final,
-                        final_methods: template_data.final_methods.clone(),
-                        
-                        static_methods: template_data.static_methods.clone(),
-                        static_fields: RefCell::new(HashMap::new()), // Will be filled below
-                        static_properties: template_data.static_properties.clone(),
-                    });
+                    // B. Vérification des Interfaces (Contrat)
+                    // Maintenant que final_class_rc existe, on peut utiliser find_method dessus !
+                    for iface_rc in &resolved_interfaces {
+                        for (method_name, expected_arity) in &iface_rc.methods {
+                            let found_method = self.find_method(&final_class_rc, method_name);
+                            
+                            if let Some(m_val) = found_method {
+                                if let Value::Function(f) = m_val {
+                                    // Arity check (params.len() inclut 'this', donc -1)
+                                    let actual_arity = if f.params.len() > 0 { f.params.len() - 1 } else { 0 };
+                                    
+                                    if actual_arity != *expected_arity {
+                                        return Err(format!(
+                                            "Class '{}' implements interface '{}' incorrectly: Method '{}' expects {} arguments, got {}.",
+                                            template_data.name, iface_rc.name, method_name, expected_arity, actual_arity
+                                        ));
+                                    }
+                                }
+                            } else {
+                                return Err(format!(
+                                    "Class '{}' must implement method '{}' from interface '{}'.",
+                                    template_data.name, method_name, iface_rc.name
+                                ));
+                            }
+                        }
+                    }
 
-                    // 3. EXECUTE STATIC FIELDS INITIALIZERS
-                    // The compiler stored the initializer functions inside the template's static_fields.
-                    // We extract them, execute them, and store the result in the final class.
-                    
+                    // ---------------------------------------------------------
+                    // 5. INITIALISATION STATIQUE
+                    // ---------------------------------------------------------
                     let static_inits = template_data.static_fields.borrow().clone();
-                    
                     for (name, init_val_or_func) in static_inits {
                         let final_val = if let Value::Function(func) = init_val_or_func {
-                            // Execute static initializer (ex: static x = 10 + 5)
-                            // Context is the class itself
                             self.run_callable_sync(
                                 Value::Function(func), 
                                 vec![], 
                                 Some(final_class_rc.clone())
                             )?
                         } else {
-                            init_val_or_func // Raw constant
+                            init_val_or_func 
                         };
-
                         final_class_rc.static_fields.borrow_mut().insert(name, final_val);
                     }
 
@@ -1955,5 +2000,19 @@ impl VM {
                 Err(format!("Accès refusé : '{}' est protégé dans '{}'", member_name, target_class.name))
             }
         }
+    }
+
+    fn find_method(&self, class: &Rc<ClassData>, name: &str) -> Option<Value> {
+        // 1. Chercher dans la classe courante
+        if let Some(m) = class.methods.get(name) {
+            return Some(m.clone());
+        }
+        
+        // 2. Remonter au parent
+        if let Some(parent) = &class.parent_ref {
+            return self.find_method(parent, name);
+        }
+        
+        None
     }
 }
