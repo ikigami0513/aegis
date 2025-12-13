@@ -12,11 +12,23 @@ pub struct ClassField {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ClassProperty {
+    pub name: String,
+    pub visibility: Visibility,
+    pub is_static: bool,
+    pub getter: Option<(Vec<(String, Option<String>)>, Vec<Statement>)>, 
+    pub setter: Option<(Vec<(String, Option<String>)>, Vec<Statement>)>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ClassDefinition {
     pub name: String,
     pub parent: Option<String>,
+
     pub methods: HashMap<String, (Vec<(String, Option<String>)>, Vec<Statement>, bool, bool)>,
     pub fields: Vec<ClassField>,
+    pub properties: Vec<ClassProperty>,
+
     pub visibilities: HashMap<String, Visibility>,
     pub is_final: bool
 }

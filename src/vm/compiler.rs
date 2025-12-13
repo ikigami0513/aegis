@@ -753,6 +753,84 @@ impl Compiler {
                     }
                 }
 
+                // 3. Compilation des Propriétés
+                let mut compiled_props = HashMap::new();
+                let mut compiled_static_props = HashMap::new();
+
+                for prop in def.properties {
+                    let mut comp_getter = None;
+                    let mut comp_setter = None;
+
+                    // A. Compile Getter
+                    if let Some((_, body)) = prop.getter {
+                        let mut c = Compiler::new_with_globals(self.globals.clone());
+                        c.scope_depth = 1;
+                        c.context_parent_name = def.parent.clone();
+                        
+                        // Param 'this' implicite
+                        c.locals.insert("this".to_string(), LocalInfo { index: 0, is_const: false });
+                        
+                        for stmt in body { c.compile_instruction(stmt.kind); }
+                        
+                        // Retour par défaut (Null) si pas de return explicite
+                        c.emit_op(OpCode::LoadConst);
+                        let null_idx = c.chunk.add_constant(Value::Null);
+                        c.emit_byte(null_idx);
+                        c.emit_op(OpCode::Return);
+                        
+                        comp_getter = Some(Value::Function(Rc::new(FunctionData {
+                            params: vec![("this".to_string(), None)],
+                            ret_type: None,
+                            chunk: c.chunk,
+                            env: None
+                        })));
+                    }
+
+                    // B. Compile Setter
+                    if let Some((params, body)) = prop.setter {
+                        let mut c = Compiler::new_with_globals(self.globals.clone());
+                        c.scope_depth = 1;
+                        c.context_parent_name = def.parent.clone();
+                        
+                        // Params: 0=this, 1=value
+                        c.locals.insert("this".to_string(), LocalInfo { index: 0, is_const: false });
+                        
+                        // On récupère le nom de l'argument du setter (ex: "val")
+                        if let Some((p_name, _)) = params.first() {
+                            c.locals.insert(p_name.clone(), LocalInfo { index: 1, is_const: false });
+                        }
+
+                        for stmt in body { c.compile_instruction(stmt.kind); }
+                        
+                        c.emit_op(OpCode::LoadConst);
+                        let null_idx = c.chunk.add_constant(Value::Null);
+                        c.emit_byte(null_idx);
+                        c.emit_op(OpCode::Return);
+
+                        // Signature de la fonction pour la VM
+                        let mut final_params = vec![("this".to_string(), None)];
+                        final_params.extend(params);
+
+                        comp_setter = Some(Value::Function(Rc::new(FunctionData {
+                            params: final_params,
+                            ret_type: None,
+                            chunk: c.chunk,
+                            env: None
+                        })));
+                    }
+                    
+                    let prop_data = crate::ast::value::PropertyData { 
+                        getter: comp_getter, 
+                        setter: comp_setter 
+                    };
+                    
+                    if prop.is_static {
+                        compiled_static_props.insert(prop.name, prop_data);
+                    } else {
+                        compiled_props.insert(prop.name, prop_data);
+                    }
+                }
+
                 // 3. CRÉATION DE LA CLASSDATA
                 // On utilise la nouvelle structure ClassData enrichie
                 let class_val = Value::Class(Rc::new(ClassData {
@@ -762,9 +840,11 @@ impl Compiler {
                     
                     methods: compiled_methods,
                     fields: compiled_fields,        // HashMap<String, Value::Function> (Initialiseurs)
+                    properties: compiled_props,
 
                     static_methods: compiled_static_methods,
                     static_fields: RefCell::new(HashMap::new()),
+                    static_properties: compiled_static_props,
 
                     is_final: def.is_final,
                     final_methods: final_methods_set,

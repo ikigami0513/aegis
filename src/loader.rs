@@ -1,5 +1,5 @@
 use serde_json::Value as JsonValue;
-use crate::ast::{ClassDefinition, Expression, Instruction, Statement, Value, nodes::ClassField, value::Visibility};
+use crate::ast::{ClassDefinition, Expression, Instruction, Statement, Value, nodes::{ClassField, ClassProperty}, value::Visibility};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 pub fn parse_block(block_json: &JsonValue) -> Result<Vec<Statement>, String> {
@@ -318,28 +318,73 @@ pub fn parse_statement_json(json_instr: &JsonValue) -> Result<Statement, String>
                 Some(array[4].as_str().unwrap().to_string())
             };
 
-            // 3. Parsing des Champs (Fields) - NOUVEAU
+            // 3. Parsing des Champs (Fields)
             let mut fields = Vec::new();
+            let mut properties = Vec::new();
+
             if array.len() > 5 {
-                if let Some(fields_arr) = array[5].as_array() {
-                    for f in fields_arr {
-                        let f_data = f.as_array().ok_or("Invalid field struct")?;
+                if let Some(members_arr) = array[5].as_array() {
+                    for m in members_arr {
+                        let m_data = m.as_array().ok_or("Invalid member struct")?;
+                        let kind = m_data[0].as_str().ok_or("Invalid member kind")?;
                         // JSON: ["field", name, vis_str, default_val]
                         
-                        let f_name = f_data[1].as_str().unwrap().to_string();
-                        let f_vis_str = f_data[2].as_str().unwrap();
-                        let default_expr = parse_expression(&f_data[3])?;
+                        if kind == "field" {
+                            let f_name = m_data[1].as_str().unwrap().to_string();
+                            let f_vis_str = m_data[2].as_str().unwrap();
+                            let default_expr = parse_expression(&m_data[3])?;
 
-                        let is_static = if f_data.len() > 4 {
-                            f_data[4].as_bool().unwrap_or(false)
-                        } else { false };
-                        
-                        fields.push(ClassField {
-                            name: f_name,
-                            visibility: parse_visibility(f_vis_str),
-                            default_value: default_expr,
-                            is_static
-                        });
+                            let is_static = if m_data.len() > 4 {
+                                m_data[4].as_bool().unwrap_or(false)
+                            } else { false };
+                            
+                            fields.push(ClassField {
+                                name: f_name,
+                                visibility: parse_visibility(f_vis_str),
+                                default_value: default_expr,
+                                is_static
+                            });
+                        }
+                        else if kind == "prop" {
+                            // ["prop", name, vis, is_static, getter, setter]
+                            let p_name = m_data[1].as_str().unwrap().to_string();
+                            let p_vis_str = m_data[2].as_str().unwrap();
+                            let is_static = m_data[3].as_bool().unwrap_or(false);
+                            
+                            // Parsing Getter
+                            let getter_data = if !m_data[4].is_null() {
+                                let g_arr = m_data[4].as_array().unwrap();
+                                // g_arr[0] est params (vide), g_arr[1] est body
+                                let body = parse_block(&g_arr[1])?;
+                                Some((vec![], body))
+                            } else { None };
+                            
+                            // Parsing Setter
+                            let setter_data = if !m_data[5].is_null() {
+                                let s_arr = m_data[5].as_array().unwrap();
+                                let params_json = s_arr[0].as_array().unwrap();
+                                
+                                // On parse les params du setter (ex: [val])
+                                let mut params = Vec::new();
+                                for p in params_json {
+                                    if let Some(p_row) = p.as_array() {
+                                         let p_name = p_row[0].as_str().unwrap().to_string();
+                                         let p_type = if p_row.len() > 1 && !p_row[1].is_null() { Some(p_row[1].as_str().unwrap().to_string()) } else { None };
+                                         params.push((p_name, p_type));
+                                    }
+                                }
+                                let body = parse_block(&s_arr[1])?;
+                                Some((params, body))
+                            } else { None };
+
+                            properties.push(ClassProperty {
+                                name: p_name,
+                                visibility: parse_visibility(p_vis_str),
+                                is_static,
+                                getter: getter_data,
+                                setter: setter_data,
+                            });
+                        }
                     }
                 }
             }
@@ -364,6 +409,7 @@ pub fn parse_statement_json(json_instr: &JsonValue) -> Result<Statement, String>
                 parent,
                 methods,
                 fields,
+                properties,
                 visibilities,
                 is_final: is_class_final
             }))

@@ -586,27 +586,61 @@ impl VM {
                         let class_rc = inst.borrow().class.clone();
                         self.check_access(&class_rc, &attr_name)?;
 
-                        let val = inst
-                            .borrow()
-                            .fields
-                            .get(&attr_name)
-                            .cloned()
-                            .unwrap_or(Value::Null);
+                        // 1. Check Properties (Instance)
+                        // On doit chercher dans toute la hiérarchie
+                        let mut lookup_class = Some(class_rc.clone());
+                        let mut found_prop = None;
+                        
+                        while let Some(c) = lookup_class {
+                            if let Some(prop) = c.properties.get(&attr_name) {
+                                found_prop = Some((prop.clone(), c.clone()));
+                                break;
+                            }
+                            lookup_class = c.parent_ref.clone();
+                        }
+
+                        if let Some((prop, owner_class)) = found_prop {
+                            if let Some(getter) = &prop.getter {
+                                // Appel du getter : On remet 'this' sur la pile
+                                self.push(getter.clone());
+                                self.push(Value::Instance(inst.clone())); 
+                                self.call_value(getter.clone(), 1, Some(owner_class))?; 
+                                return Ok(true); // On laisse la VM exécuter le getter
+                            } else {
+                                return Err(format!("Property '{}' is write-only", attr_name));
+                            }
+                        }
+
+                        // 2. Champs classiques
+                        let val = inst.borrow().fields.get(&attr_name).cloned().unwrap_or(Value::Null);
                         self.push(val);
                     }
                     Value::Class(class_rc) => {
-                        // 1. Check Security
                         self.check_access(&class_rc, &attr_name)?;
 
-                        // 2. Look in Static Fields
+                        // 1. Check Static Properties
+                        // Pour l'instant on cherche juste dans la classe elle-même (pas d'héritage statique complexe)
+                        if let Some(prop) = class_rc.static_properties.get(&attr_name) {
+                            if let Some(getter) = &prop.getter {
+                                // 'this' pour un statique est la Classe elle-même
+                                self.push(getter.clone());
+                                self.push(Value::Class(class_rc.clone()));
+                                self.call_value(getter.clone(), 1, Some(class_rc.clone()))?;
+                                return Ok(true);
+                            } else {
+                                return Err(format!("Static Property '{}' is write-only", attr_name));
+                            }
+                        }
+
+                        // 2. Static Fields
                         if let Some(val) = class_rc.static_fields.borrow().get(&attr_name) {
                             self.push(val.clone());
                         } 
-                        // 3. Look in Static Methods
+                        // 3. Static Methods
                         else if let Some(method) = class_rc.static_methods.get(&attr_name) {
                             self.push(method.clone());
                         } else {
-                            return Err(format!("Unknown static member '{}' on class '{}'", attr_name, class_rc.name));
+                            return Err(format!("Unknown static member '{}'", attr_name));
                         }
                     }
                     Value::Dict(d) => {
@@ -639,11 +673,54 @@ impl VM {
                     Value::Instance(inst) => {
                         let class_rc = inst.borrow().class.clone();
                         self.check_access(&class_rc, &attr_name)?;
+
+                        // 1. Check Properties (Instance)
+                        let mut lookup_class = Some(class_rc.clone());
+                        let mut found_prop = None;
+                        while let Some(c) = lookup_class {
+                            if let Some(prop) = c.properties.get(&attr_name) {
+                                found_prop = Some((prop.clone(), c.clone()));
+                                break;
+                            }
+                            lookup_class = c.parent_ref.clone();
+                        }
+
+                        if let Some((prop, owner_class)) = found_prop {
+                            if let Some(setter) = &prop.setter {
+                                // Appel Setter
+                                // On remet les arguments pour call_value
+                                self.push(setter.clone());
+                                self.push(Value::Instance(inst.clone())); // arg 0: this
+                                self.push(val.clone());                   // arg 1: value
+                                
+                                self.call_value(setter.clone(), 2, Some(owner_class))?;
+                                return Ok(true);
+                            } else {
+                                return Err(format!("Property '{}' is read-only", attr_name));
+                            }
+                        }
+
+                        // 2. Champs classiques
                         inst.borrow_mut().fields.insert(attr_name, val.clone());
-                        self.push(val); // L'expression d'assignation retourne la valeur
+                        self.push(val);
                     }
                     Value::Class(class_rc) => {
-                        self.check_access(&class_rc, &attr_name)?; // Security
+                        self.check_access(&class_rc, &attr_name)?;
+
+                        // 1. Check Static Properties
+                        if let Some(prop) = class_rc.static_properties.get(&attr_name) {
+                            if let Some(setter) = &prop.setter {
+                                self.push(setter.clone());
+                                self.push(Value::Class(class_rc.clone())); // arg 0: this (Class)
+                                self.push(val.clone());                    // arg 1: value
+                                self.call_value(setter.clone(), 2, Some(class_rc.clone()))?;
+                                return Ok(true);
+                            } else {
+                                return Err(format!("Static Property '{}' is read-only", attr_name));
+                            }
+                        }
+
+                        // 2. Static Fields
                         class_rc.static_fields.borrow_mut().insert(attr_name, val.clone());
                         self.push(val);
                     }
@@ -731,11 +808,13 @@ impl VM {
                         methods: template_data.methods.clone(),
                         visibilities: template_data.visibilities.clone(),
                         fields: template_data.fields.clone(), // Instance fields initializers
+                        properties: template_data.properties.clone(),
                         is_final: template_data.is_final,
                         final_methods: template_data.final_methods.clone(),
                         
                         static_methods: template_data.static_methods.clone(),
                         static_fields: RefCell::new(HashMap::new()), // Will be filled below
+                        static_properties: template_data.static_properties.clone(),
                     });
 
                     // 3. EXECUTE STATIC FIELDS INITIALIZERS

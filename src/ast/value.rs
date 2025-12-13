@@ -23,6 +23,12 @@ pub enum Visibility {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct PropertyData {
+    pub getter: Option<Value>,
+    pub setter: Option<Value>
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ClassData {
     pub name: String,
     pub parent: Option<String>,
@@ -30,9 +36,11 @@ pub struct ClassData {
 
     pub methods: HashMap<String, Value>,
     pub fields: HashMap<String, Value>,
+    pub properties: HashMap<String, PropertyData>,
 
     pub static_methods: HashMap<String, Value>,
     pub static_fields: RefCell<HashMap<String, Value>>,
+    pub static_properties: HashMap<String, PropertyData>,
 
     pub is_final: bool,
     pub final_methods: HashSet<String>,

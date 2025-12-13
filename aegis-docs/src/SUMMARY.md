@@ -31,6 +31,7 @@
 
 - [Object-Oriented Programming](oop/README.md)
     - [Classes & Instances](oop/classes.md)
+    - [Properties](oop/properties.md)
     - [Methods & `this`](oop/methods.md)
     - [Inheritance](oop/inheritance.md)
     - [Composition Pattern](oop/composition.md)

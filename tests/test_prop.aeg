@@ -1,0 +1,44 @@
+print "--- TEST PROPERTIES v0.3.2 ---"
+
+class Circle {
+    private _r = 0
+    
+    // Instance Property
+    prop radius {
+        get { 
+            return this._r 
+        }
+        set(v) { 
+            if (v < 0) {
+                print "Error: Negative radius!"
+            } else {
+                this._r = v
+            }
+        }
+    }
+    
+    // Computed Property (Read-only)
+    prop area {
+        get { return 3.14 * this._r * this._r }
+    }
+    
+    // Static Property
+    private static _count = 0
+    public static prop Count {
+        get { return this._count }
+        set(v) { this._count = v }
+    }
+}
+
+var c = new Circle()
+c.radius = 10
+print "Radius: " + c.radius // 10
+print "Area: " + c.area     // 314
+
+c.radius = -5 // "Error: Negative radius!"
+print "Radius stays: " + c.radius // 10
+
+// c.area = 50 // Error: write-only (si décommenté)
+
+Circle.Count = 1
+print "Static Count: " + Circle.Count // 1

@@ -492,6 +492,52 @@ impl Parser {
         Ok(json!(["while", line, cond, body]))
     }
 
+    // Parses a property block: prop name { get { ... } set(v) { ... } }
+    fn parse_property(&mut self, vis: &str, is_static: bool) -> Result<Value, String> {
+        // 1. Name
+        let name = if let TokenKind::Identifier(n) = &self.advance().kind { n.clone() } else { return Err("Prop Name".into()); };
+        
+        self.consume(TokenKind::LBrace, "Expect '{' after property name")?;
+        
+        let mut getter = Value::Null;
+        let mut setter = Value::Null;
+        
+        // Loop until '}'
+        while !self.check(&TokenKind::RBrace) && !self.is_at_end() {
+            let token = self.advance();
+            
+            // Check for identifiers "get" or "set"
+            if let TokenKind::Identifier(method_type) = &token.kind {
+                if method_type == "get" {
+                    // Syntax: get { body }
+                    // Note: No parenthesis for getter definition in modern syntax usually
+                    if self.check(&TokenKind::LParen) {
+                        return Err("Getters should not have parameters list ()".into());
+                    }
+                    let body = self.parse_block()?;
+                    // Store as [params, body] where params is empty
+                    getter = json!([ [], body ]);
+                } 
+                else if method_type == "set" {
+                    // Syntax: set(val) { body }
+                    let params = self.parse_params_list()?;
+                    let body = self.parse_block()?;
+                    setter = json!([ params, body ]);
+                } 
+                else {
+                    return Err(format!("Expected 'get' or 'set' inside property block, found '{}'", method_type));
+                }
+            } else {
+                return Err("Expected 'get' or 'set' identifier inside property block".into());
+            }
+        }
+        
+        self.consume(TokenKind::RBrace, "Expect '}' after property body")?;
+        
+        // JSON structure: ["prop", name, vis, is_static, getter, setter]
+        Ok(json!(["prop", name, vis, is_static, getter, setter]))
+    }
+
     fn parse_class(&mut self) -> Result<Value, String> {
         let line = self.current_line();
         let is_class_final = self.match_token(TokenKind::Final);
@@ -544,6 +590,15 @@ impl Parser {
                 
                 methods.insert(m_name.clone(), json!([m_params, m_body, is_static, is_final_method]));
                 visibilities.insert(m_name, json!(vis_str));
+            }
+            else if self.match_token(TokenKind::Prop) {
+                // On délègue au helper
+                let prop_json = self.parse_property(vis_str, is_static)?;
+                
+                // On stocke ça dans 'fields' temporairement pour le JSON de sortie.
+                // Le Loader fera le tri grâce au tag "prop".
+                fields.push(prop_json.clone());
+                visibilities.insert(prop_json[1].as_str().unwrap().to_string(), json!(vis_str));
             }
             // Cas Champ explicite 'var'
             else if self.match_token(TokenKind::Var) {
