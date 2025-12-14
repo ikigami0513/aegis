@@ -42,10 +42,12 @@ pub struct ClassData {
 
     pub methods: HashMap<String, Value>,
     pub fields: HashMap<String, Value>,
+    pub field_types: HashMap<String, String>,
     pub properties: HashMap<String, PropertyData>,
 
     pub static_methods: HashMap<String, Value>,
     pub static_fields: RefCell<HashMap<String, Value>>,
+    pub static_field_types: HashMap<String, String>,
     pub static_properties: HashMap<String, PropertyData>,
 
     pub is_final: bool,

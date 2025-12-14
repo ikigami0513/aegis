@@ -8,7 +8,8 @@ pub struct ClassField {
     pub name: String,
     pub visibility: Visibility,
     pub default_value: Expression, // Expression à évaluer à l'instanciation
-    pub is_static: bool
+    pub is_static: bool,
+    pub type_annot: Option<String>
 }
 
 #[derive(Debug, Clone, PartialEq)]

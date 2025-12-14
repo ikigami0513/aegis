@@ -375,12 +375,19 @@ pub fn parse_statement_json(json_instr: &JsonValue) -> Result<Statement, String>
                             let is_static = if m_data.len() > 4 {
                                 m_data[4].as_bool().unwrap_or(false)
                             } else { false };
+
+                            let type_annot = if m_data.len() > 5 && !m_data[5].is_null() {
+                                Some(m_data[5].as_str().unwrap().to_string())
+                            } else {
+                                None
+                            };
                             
                             fields.push(ClassField {
                                 name: f_name,
                                 visibility: parse_visibility(f_vis_str),
                                 default_value: default_expr,
-                                is_static
+                                is_static,
+                                type_annot
                             });
                         }
                         else if kind == "prop" {

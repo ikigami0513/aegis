@@ -2,8 +2,8 @@ print "--- TEST POO v0.3.0 (Modern Syntax) ---"
 
 class Wallet {
     // 1. Déclaration de champs avec visibilité + valeur par défaut
-    private balance = 100
-    public currency = "EUR"
+    private balance: int = 100
+    public currency: string = "EUR"
     
     // Champ sans valeur par défaut (sera null)
     protected owner

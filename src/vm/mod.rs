@@ -803,11 +803,13 @@ impl VM {
                         parent_ref: final_parent_ref.clone(),
                         methods: template_data.methods.clone(),
                         visibilities: template_data.visibilities.clone(),
-                        fields: template_data.fields.clone(), 
+                        fields: template_data.fields.clone(),
+                        field_types: template_data.field_types.clone(),
                         properties: template_data.properties.clone(),
                         
                         static_methods: template_data.static_methods.clone(),
-                        static_fields: RefCell::new(HashMap::new()), 
+                        static_fields: RefCell::new(HashMap::new()),
+                        static_field_types: template_data.static_field_types.clone(),
                         static_properties: template_data.static_properties.clone(),
 
                         is_final: template_data.is_final,

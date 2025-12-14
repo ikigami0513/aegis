@@ -751,8 +751,19 @@ impl Compiler {
                 // Chaque champ qui a une valeur par défaut devient une mini-fonction d'initialisation
                 let mut compiled_fields = HashMap::new();
                 let mut compiled_static_fields = HashMap::new();
+
+                let mut compiled_field_types = HashMap::new();
+                let mut compiled_static_field_types = HashMap::new();
                 
                 for field in def.fields {
+                    if let Some(t) = &field.type_annot {
+                        if field.is_static {
+                            compiled_static_field_types.insert(field.name.clone(), t.clone());
+                        } else {
+                            compiled_field_types.insert(field.name.clone(), t.clone());
+                        }
+                    }
+
                     // On compile l'expression par défaut dans un contexte isolé
                     let mut field_compiler = Compiler::new_with_globals(self.globals.clone());
                     // Pas de scope depth particulier, c'est comme une fonction statique
@@ -865,10 +876,12 @@ impl Compiler {
                     
                     methods: compiled_methods,
                     fields: compiled_fields,        // HashMap<String, Value::Function> (Initialiseurs)
+                    field_types: compiled_field_types,
                     properties: compiled_props,
 
                     static_methods: compiled_static_methods,
                     static_fields: RefCell::new(HashMap::new()),
+                    static_field_types: compiled_static_field_types,
                     static_properties: compiled_static_props,
 
                     is_final: def.is_final,

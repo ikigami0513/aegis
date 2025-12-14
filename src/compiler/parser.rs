@@ -651,10 +651,11 @@ impl Parser {
             // Cas Champ explicite 'var'
             else if self.match_token(TokenKind::Var) {
                 let f_name = if let TokenKind::Identifier(n) = &self.advance().kind { n.clone() } else { return Err("Field Name".into()); };
+                let type_annot = self.parse_type_annotation()?;
                 let default_val = if self.match_token(TokenKind::Eq) { self.parse_expression()? } else { json!(null) };
                 
                 // JSON Field: ["field", name, vis, default_val, is_static] <--- Ajout à la fin
-                fields.push(json!(["field", f_name.clone(), vis_str, default_val, is_static]));
+                fields.push(json!(["field", f_name.clone(), vis_str, default_val, is_static, type_annot]));
                 visibilities.insert(f_name, json!(vis_str));
             }
             // Cas Implicite (identifiant...)
@@ -669,8 +670,9 @@ impl Parser {
                     visibilities.insert(member_name, json!(vis_str));
                 } else {
                     // Champ
+                    let type_annot = self.parse_type_annotation()?;
                     let default_val = if self.match_token(TokenKind::Eq) { self.parse_expression()? } else { json!(null) };
-                    fields.push(json!(["field", member_name.clone(), vis_str, default_val, is_static]));
+                    fields.push(json!(["field", member_name.clone(), vis_str, default_val, is_static, type_annot]));
                     visibilities.insert(member_name, json!(vis_str));
                 }
             }
