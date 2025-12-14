@@ -322,9 +322,10 @@ pub fn publish(mut target_os: Option<String>, mut target_arch: Option<String>) -
     let user_excludes = manifest.project.exclude.unwrap_or_default();
     create_zip_of_directory(Path::new("."), zip_path, &user_excludes)?;
 
-    let url = format!("{}/packages/{}/publish/", REGISTRY_URL, manifest.project.name);
+    let url = format!("{}/packages/publish/", REGISTRY_URL);
 
     let form = multipart::Form::new()
+        .text("name", manifest.project.name.to_string())
         .text("version", manifest.project.version)
         .text("os", os_val)
         .text("architecture", arch_val)
