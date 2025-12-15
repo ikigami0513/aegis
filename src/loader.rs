@@ -509,7 +509,7 @@ pub fn parse_statement_json(json_instr: &JsonValue) -> Result<Statement, String>
             })
         },
         
-        "break" => Ok(Instruction::ExpressionStatement(Expression::Literal(Value::Null))),
+        "break" => Ok(Instruction::Break),
 
         "continue" => Ok(Instruction::Continue),
 

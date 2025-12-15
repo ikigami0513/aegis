@@ -9,8 +9,18 @@ use crate::opcode::OpCode;
 
 #[derive(Debug)]
 pub enum LoopState {
-    While { start_ip: usize },
-    For { continue_patches: Vec<usize> }, // Liste des jumps à corriger
+    While { 
+        start_ip: usize,
+        break_jumps: Vec<usize>,
+        try_depth_at_start: usize,
+        locals_count_at_start: usize
+    },
+    For { 
+        continue_patches: Vec<usize>,
+        break_jumps: Vec<usize>,
+        try_depth_at_start: usize,
+        locals_count_at_start: usize
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -29,6 +39,7 @@ pub struct Compiler {
     pub current_line: usize,
     pub loop_stack: Vec<LoopState>,
     pub context_parent_name: Option<String>,
+    pub try_depth: usize,
 }
 
 impl Compiler {
@@ -53,7 +64,8 @@ impl Compiler {
             current_return_type: None,
             current_line: 1,
             loop_stack: Vec::new(),
-            context_parent_name: None
+            context_parent_name: None,
+            try_depth: 0
         }
     }
 
@@ -67,7 +79,8 @@ impl Compiler {
             current_return_type: None,
             current_line: 1,
             loop_stack: Vec::new(),
-            context_parent_name: None
+            context_parent_name: None,
+            try_depth: 0
         }
     }
 
@@ -939,7 +952,9 @@ impl Compiler {
                 let catch_jump = self.emit_jump(OpCode::SetupExcept);
 
                 // 2. Compile Try Block
+                self.try_depth += 1;
                 self.compile_scope(try_body);
+                self.try_depth -= 1;
 
                 // 3. Pop Exception (Success Path)
                 self.emit_op(OpCode::PopExcept);
@@ -1077,38 +1092,94 @@ impl Compiler {
                 self.emit_op(OpCode::Import);
                 self.emit_byte(path_idx);
             },
-            Instruction::Continue => {
-                // Étape 1 : On détermine l'action à faire (Lecture seule ou copie simple)
-                // On utilise un enum temporaire ou juste des variables pour sortir l'info du scope
-                enum LoopAction {
-                    JumpToStart(usize),
-                    RecordPatch,
-                    Error
+
+            Instruction::Break => {
+                // ÉTAPE 1 : EXTRACTION
+                let (start_try, start_locals) = if let Some(state) = self.loop_stack.last() {
+                    match state {
+                        LoopState::While { try_depth_at_start, locals_count_at_start, .. } => (*try_depth_at_start, *locals_count_at_start),
+                        LoopState::For { try_depth_at_start, locals_count_at_start, .. } => (*try_depth_at_start, *locals_count_at_start),
+                    }
+                } else {
+                    panic!("'break' utilisé hors d'une boucle.");
+                };
+
+                // ÉTAPE 2 : ACTIONS
+                
+                // A. Fermeture des Try
+                let pop_except_count = self.try_depth - start_try;
+                for _ in 0..pop_except_count {
+                    self.emit_op(OpCode::PopExcept);
                 }
 
-                let action = match self.loop_stack.last() { // .last() suffit (lecture seule)
-                    Some(LoopState::While { start_ip }) => LoopAction::JumpToStart(*start_ip),
-                    Some(LoopState::For { .. }) => LoopAction::RecordPatch,
-                    None => LoopAction::Error,
-                }; // Ici, l'emprunt sur self.loop_stack est terminé !
+                // B. Fermeture des Variables Locales
+                let current_locals = self.locals.len();
+                let pop_locals_count = current_locals - start_locals;
+                for _ in 0..pop_locals_count {
+                    self.emit_op(OpCode::Pop);
+                }
 
-                // Étape 2 : On agit (self est libre)
-                match action {
-                    LoopAction::JumpToStart(ip) => {
-                        self.emit_loop(ip);
-                    },
-                    LoopAction::RecordPatch => {
-                        // 1. On émet le saut (besoin de self)
-                        let offset = self.emit_jump(OpCode::Jump);
-                        
-                        // 2. On ré-emprunte juste ce qu'il faut pour stocker l'offset
-                        if let Some(LoopState::For { continue_patches }) = self.loop_stack.last_mut() {
-                            continue_patches.push(offset);
-                        }
-                    },
-                    LoopAction::Error => panic!("'continue' utilisé hors d'une boucle."),
+                // C. --- FIX SEGFAULT : Dummy Value ---
+                // La sortie de boucle s'attend à trouver la condition (booléen) sur la pile 
+                // pour faire un POP final. Break doit simuler cette valeur pour garder la pile alignée.
+                let null_idx = self.chunk.add_constant(Value::Null);
+                self.emit_op(OpCode::LoadConst);
+                self.emit_byte(null_idx);
+                // -------------------------------------
+
+                // D. Saut
+                let jump_op = self.emit_jump(OpCode::Jump);
+                
+                // ÉTAPE 3 : STOCKAGE
+                match self.loop_stack.last_mut().unwrap() {
+                    LoopState::While { break_jumps, .. } => break_jumps.push(jump_op),
+                    LoopState::For { break_jumps, .. } => break_jumps.push(jump_op),
                 }
             },
+
+            Instruction::Continue => {
+                // ÉTAPE 1 : EXTRACTION
+                // On détermine où on est et ce qu'on doit faire
+                // jump_target : Some(ip) pour While, None pour For (car on doit patcher plus tard)
+                let (start_try, start_locals, jump_target) = if let Some(state) = self.loop_stack.last() {
+                    match state {
+                        LoopState::While { try_depth_at_start, locals_count_at_start, start_ip, .. } 
+                            => (*try_depth_at_start, *locals_count_at_start, Some(*start_ip)),
+                        
+                        LoopState::For { try_depth_at_start, locals_count_at_start, .. } 
+                            => (*try_depth_at_start, *locals_count_at_start, None),
+                    }
+                } else {
+                    panic!("'continue' utilisé hors d'une boucle.");
+                };
+
+                // ÉTAPE 2 : ACTIONS
+                let pop_except_count = self.try_depth - start_try;
+                for _ in 0..pop_except_count {
+                    self.emit_op(OpCode::PopExcept);
+                }
+
+                let current_locals = self.locals.len();
+                let pop_locals_count = current_locals - start_locals;
+                for _ in 0..pop_locals_count {
+                    self.emit_op(OpCode::Pop);
+                }
+
+                // ÉTAPE 3 : SAUT
+                if let Some(ip) = jump_target {
+                    // While : saut direct au début (on connait l'IP)
+                    self.emit_loop(ip);
+                } else {
+                    // For : saut vers l'incrément (on ne connait pas encore l'IP, il faudra patcher)
+                    let jump = self.emit_jump(OpCode::Jump);
+                    
+                    // On ré-emprunte pour stocker le patch
+                    if let Some(LoopState::For { continue_patches, .. }) = self.loop_stack.last_mut() {
+                        continue_patches.push(jump);
+                    }
+                }
+            },
+
             Instruction::Enum(name, variants) => {
                 for (i, variant_name) in variants.iter().enumerate() {
                     // Clé
@@ -1167,111 +1238,101 @@ impl Compiler {
                     self.global_constants.push(name);
                 }
             },
+            
             Instruction::ForEach(iter_var_name, iterable, body) => {
-                // On ouvre un scope pour isoler les variables internes (__seq, __idx)
                 self.scope_depth += 1;
                 
-                // 1. Initialisation : var __seq = iterable
-                let seq_var = format!("__seq_{}", self.locals.len()); // Nom unique
+                // 1. Init __seq et __idx (Code inchangé...)
+                let seq_var = format!("__seq_{}", self.locals.len());
                 self.compile_expression(iterable);
-                
-                // On stocke __seq comme locale
                 let seq_idx = self.locals.len() as u8;
-                self.locals.insert(seq_var.clone(), LocalInfo { index: seq_idx, is_const: true }); // Const pour éviter modif
-                // La valeur est sur la pile, elle devient __seq
+                self.locals.insert(seq_var.clone(), LocalInfo { index: seq_idx, is_const: true });
                 
-                // 2. Initialisation : var __idx = 0
                 let idx_var = format!("__idx_{}", self.locals.len());
                 self.emit_op(OpCode::LoadConst);
                 let zero_const = self.chunk.add_constant(Value::Integer(0));
                 self.emit_byte(zero_const);
-                
                 let idx_idx = self.locals.len() as u8;
                 self.locals.insert(idx_var.clone(), LocalInfo { index: idx_idx, is_const: false });
                 
-                // --- DÉBUT DE LA BOUCLE ---
                 let loop_start = self.chunk.code.len();
                 
-                // 3. Condition : __idx < __seq.len()
-                
-                // A. Charger __idx
+                // 2. Condition (Code inchangé...)
                 self.emit_op(OpCode::GetLocal); self.emit_byte(idx_idx);
-                
-                // B. Calculer __seq.len()
                 self.emit_op(OpCode::GetLocal); self.emit_byte(seq_idx);
                 let len_str_idx = self.chunk.add_constant(Value::String("len".to_string()));
-                self.emit_op(OpCode::Method); 
-                self.emit_byte(len_str_idx); 
-                self.emit_byte(0); // 0 args pour len()
-                
-                // C. Comparer <
+                self.emit_op(OpCode::Method); self.emit_byte(len_str_idx); self.emit_byte(0);
                 self.emit_op(OpCode::Less);
                 
-                // D. Sauter si faux (Fin de boucle)
                 let exit_jump = self.emit_jump(OpCode::JumpIfFalse);
-                self.emit_op(OpCode::Pop); // Pop le booléen de la condition
+                self.emit_op(OpCode::Pop); 
                 
-                // Gestion du 'continue' (optionnel, voir LoopState si tu veux supporter continue dans foreach)
-                // Pour faire simple, on push un state For
-                self.loop_stack.push(LoopState::For { continue_patches: Vec::new() });
+                // 3. PUSH DU LOOP STATE (Nécessaire pour le break !)
+                self.loop_stack.push(LoopState::For { 
+                    continue_patches: Vec::new(),
+                    break_jumps: Vec::new(),
+                    try_depth_at_start: self.try_depth,
+                    locals_count_at_start: self.locals.len()
+                });
 
-                // 4. Extraction : var user_var = __seq.at(__idx)
-                
-                // On entre dans le scope utilisateur
+                // 4. Variable utilisateur 'elem'
                 self.scope_depth += 1; 
-                
-                self.emit_op(OpCode::GetLocal); self.emit_byte(seq_idx); // Charger seq
-                self.emit_op(OpCode::GetLocal); self.emit_byte(idx_idx); // Charger idx
+                self.emit_op(OpCode::GetLocal); self.emit_byte(seq_idx);
+                self.emit_op(OpCode::GetLocal); self.emit_byte(idx_idx);
                 let at_str_idx = self.chunk.add_constant(Value::String("at".to_string()));
-                self.emit_op(OpCode::Method);
-                self.emit_byte(at_str_idx);
-                self.emit_byte(1); // 1 arg pour at()
+                self.emit_op(OpCode::Method); self.emit_byte(at_str_idx); self.emit_byte(1);
                 
-                // On stocke dans la variable utilisateur 'elem'
                 let user_var_idx = self.locals.len() as u8;
                 self.locals.insert(iter_var_name.clone(), LocalInfo { index: user_var_idx, is_const: false });
-                // La valeur de .at() est sur la pile, elle devient 'elem'
                 
-                // 5. Corps de la boucle
-                // Attention : ne pas appeler compile_scope car on a déjà géré l'ouverture du scope manuellement
-                // On compile juste les instructions
+                // 5. CORPS DE LA BOUCLE AVEC NETTOYAGE (FIX MEMORY LEAK)
+                let locals_count_before_body = self.locals.len(); // Snapshot
+                
                 for stmt in body {
                     self.compile_instruction(stmt.kind);
                 }
                 
-                // 6. Nettoyage Variable Utilisateur (Fin d'itération)
-                self.emit_op(OpCode::Pop); // On pop 'elem'
+                // --- NETTOYAGE MANUEL DES VARIABLES DU CORPS ---
+                // C'est ce qui manquait et causait le crash !
+                let locals_count_after_body = self.locals.len();
+                let vars_created = locals_count_after_body - locals_count_before_body;
+                for _ in 0..vars_created {
+                    self.emit_op(OpCode::Pop);
+                }
+                self.locals.retain(|_, info| info.index < locals_count_before_body as u8);
+                // ------------------------------------------------
+                
+                // 6. Fin scope utilisateur 'elem'
+                self.emit_op(OpCode::Pop); 
                 self.locals.remove(&iter_var_name);
                 self.scope_depth -= 1;
                 
-                // Label pour 'continue' (C'est ici qu'on atterrit)
-                if let Some(LoopState::For { continue_patches }) = self.loop_stack.pop() {
+                // 7. Patch Continue & Incrément
+                if let Some(LoopState::For { continue_patches, break_jumps , ..}) = self.loop_stack.pop() {
                     for patch in continue_patches { self.patch_jump(patch); }
+                    
+                    // Increment __idx
+                    self.emit_op(OpCode::GetLocal); self.emit_byte(idx_idx);
+                    self.emit_op(OpCode::LoadConst);
+                    let one_const = self.chunk.add_constant(Value::Integer(1));
+                    self.emit_byte(one_const);
+                    self.emit_op(OpCode::Add);
+                    self.emit_op(OpCode::SetLocal); self.emit_byte(idx_idx);
+                    self.emit_op(OpCode::Pop);
+                    
+                    self.emit_loop(loop_start);
+                    
+                    self.patch_jump(exit_jump); // Sortie normale
+                    
+                    // 8. Patch Breaks (On atterrit aussi ici, donc le nettoyage final se fera !)
+                    for jump in break_jumps { self.patch_jump(jump); }
                 }
 
-                // 7. Incrément : __idx = __idx + 1
-                self.emit_op(OpCode::GetLocal); self.emit_byte(idx_idx);
-                self.emit_op(OpCode::LoadConst);
-                let one_const = self.chunk.add_constant(Value::Integer(1));
-                self.emit_byte(one_const);
-                self.emit_op(OpCode::Add);
-                self.emit_op(OpCode::SetLocal); self.emit_byte(idx_idx);
-                self.emit_op(OpCode::Pop); // SetLocal expression result cleanup
-                
-                // 8. Retour au début
-                self.emit_loop(loop_start);
-                
-                // --- FIN DE LA BOUCLE ---
-                self.patch_jump(exit_jump);
-                self.emit_op(OpCode::Pop); // Pop condition result (false)
-                
-                // 9. Nettoyage final (__idx, __seq)
+                self.emit_op(OpCode::Pop); // Pop condition
                 self.emit_op(OpCode::Pop); // Pop __idx
                 self.locals.remove(&idx_var);
-                
                 self.emit_op(OpCode::Pop); // Pop __seq
                 self.locals.remove(&seq_var);
-                
                 self.scope_depth -= 1;
             },
         }
@@ -1347,7 +1408,12 @@ impl Compiler {
         // 1. Marquer le début de la boucle (pour y revenir après)
         let loop_start = self.chunk.code.len();
 
-        self.loop_stack.push(LoopState::While { start_ip: loop_start });
+        self.loop_stack.push(LoopState::While { 
+            start_ip: loop_start,
+            break_jumps: Vec::new(),
+            try_depth_at_start: self.try_depth,
+            locals_count_at_start: self.locals.len()
+        });
 
         // 2. Compiler la condition
         self.compile_expression(condition);

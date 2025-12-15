@@ -136,6 +136,7 @@ pub enum Instruction {
         body: Vec<Statement>
     },
     Throw(Expression),
+    Break,
     Continue,
     Const(String, Expression),
     ForEach(String, Expression, Vec<Statement>),

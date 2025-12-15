@@ -148,30 +148,28 @@ impl VM {
         match result {
             Ok(keep_going) => Ok(keep_going),
             Err(msg) => {
-                // --- ERROR HANDLING LOGIC ---
-                // Une erreur est survenue (Result::Err).
-                // Au lieu de crasher, on cherche un handler.
-                
                 if let Some(handler) = self.handlers.pop() {
-                    // 1. Unwind frames : On remonte jusqu'à la frame qui a le try
+                    // 1. Unwind frames
                     while self.frames.len() > handler.frame_index + 1 {
                         self.frames.pop();
                     }
                     
-                    // 2. Restore Stack : On nettoie la pile des calculs incomplets
-                    self.stack.truncate(handler.stack_height);
+                    // 2. Restore Stack - C'EST LA CLÉ
+                    // On coupe brutalement la pile à la hauteur enregistrée lors du 'try'
+                    if handler.stack_height <= self.stack.len() {
+                        self.stack.truncate(handler.stack_height);
+                    } else {
+                        // Corruption grave : la pile est plus petite qu'au début du try !
+                        return Err("Critical VM Error: Stack corrupted during unwind".into());
+                    }
                     
-                    // 3. Push Error : On met le message d'erreur sur la pile
-                    // (Ainsi le code 'catch' pourra le mettre dans une variable)
+                    // 3. Push Error
                     self.push(Value::String(msg));
                     
-                    // 4. Jump : On déplace l'IP au début du bloc catch
+                    // 4. Jump
                     self.current_frame().ip = handler.catch_ip;
-                    
-                    // On continue l'exécution !
                     Ok(true) 
                 } else {
-                    // Pas de handler ? On propage l'erreur (Crash)
                     Err(msg)
                 }
             }
@@ -212,13 +210,27 @@ impl VM {
         // 4. BOUCLE SECONDAIRE : On exécute tant qu'on n'est pas revenu au niveau d'avant
         // C'est ici la magie : on fait tourner la VM "manuellement" pour ce callback
         while self.frames.len() >= start_depth {
-            if !self.step()? {
-                break; // Fin du programme inattendue
+            if self.frames.is_empty() {
+                return Err("VM Panic: Call stack exhausted during sync execution".into());
+            }
+
+            match self.step() {
+                Ok(true) => continue,
+                Ok(false) => break, // Fin normale du programme (ne devrait pas arriver ici)
+                Err(e) => {
+                    // Si une erreur survient et n'est pas attrapée par un try/catch interne,
+                    // elle remonte ici. On doit propager l'erreur et arrêter la mini-VM.
+                    return Err(self.runtime_error(e));
+                }
             }
         }
 
         // 5. Le résultat est sur la pile (la valeur de retour du callback)
         // Normalement, `OpCode::Return` a laissé la valeur de retour sur la pile
+        if self.stack.is_empty() {
+             return Ok(Value::Null); // Sécurité
+        }
+
         Ok(self.pop())
     }
 
@@ -244,12 +256,16 @@ impl VM {
             }
             OpCode::Call => {
                 let arg_count = self.read_byte() as usize;
+                
+                // SÉCURITÉ : Vérifier qu'on a assez d'éléments sur la pile
+                if self.stack.len() < 1 + arg_count {
+                    return Err(format!("Stack underflow during Call (args: {})", arg_count));
+                }
+
                 let func_idx = self.stack.len() - 1 - arg_count;
                 
-                // VERSION UNSAFE : On récupère la fonction sans vérifier les bornes
-                let target = unsafe { 
-                    self.stack.get_unchecked(func_idx).clone() 
-                };
+                // VERSION SAFE
+                let target = self.stack[func_idx].clone();
                 
                 self.call_value(target, arg_count, None)?;
             },
@@ -392,12 +408,13 @@ impl VM {
                 let slot_idx = self.read_byte() as usize;
                 let abs_index = self.current_frame().slot_offset + slot_idx;
                 
-                // VERSION UNSAFE
-                // On évite le "Bounds Check" du vecteur stack
-                let val = unsafe { 
-                    self.stack.get_unchecked(abs_index).clone() 
-                };
-                self.push(val);
+                // VERSION SAFE
+                if let Some(val) = self.stack.get(abs_index) {
+                    self.push(val.clone());
+                } else {
+                    return Err(format!("Stack access out of bounds (local: {}, abs: {}, stack_len: {})", 
+                        slot_idx, abs_index, self.stack.len()));
+                }
             }
             OpCode::SetLocal => {
                 let slot_idx = self.read_byte() as usize;
@@ -1762,13 +1779,13 @@ impl VM {
     #[inline(always)]
     fn read_byte(&mut self) -> u8 {
         let frame = self.current_frame();
-        // VERSION UNSAFE (Plus rapide)
-        unsafe {
-            // On suppose que le compilateur n'a jamais généré un saut hors du code
-            let b = *frame.chunk().code.get_unchecked(frame.ip);
-            frame.ip += 1;
-            b
+        // VERSION SAFE : On vérifie les bornes
+        if frame.ip >= frame.chunk().code.len() {
+            panic!("VM Error: Instruction Pointer out of bounds!");
         }
+        let b = frame.chunk().code[frame.ip];
+        frame.ip += 1;
+        b
     }
 
     fn read_short(&mut self) -> u16 {
