@@ -10,7 +10,7 @@ use aegis_core::vm::VM;
 
 #[derive(Parser)]
 #[command(name = "aegis")]
-#[command(about = "Aegis Language Compiler & Package Manager", version = "2.0", long_about = None)]
+#[command(about = "Aegis Language Compiler & Package Manager", version = "0.4.2", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>
