@@ -67,11 +67,18 @@ impl VM {
             class_context: None
         };
 
+        // 1. On détermine la taille nécessaire
+        // Le compilateur a déjà rempli global_names avec les natives + les classes utilisateur (User, etc.)
+        let required_globals_count = global_names.borrow().len();
+        
+        // 2. On s'assure d'avoir au moins 256 slots ou la taille requise (le plus grand des deux)
+        // Cela évite le crash si le compilateur a trouvé l'index 51 alors que le vec s'arrête à 34.
+        let initial_size = std::cmp::max(required_globals_count, 256);
+
         let mut vm = VM {
             frames: Vec::with_capacity(64),
             stack: Vec::with_capacity(STACK_MAX),
-            // On prépare de la place (256 slots globaux)
-            globals: vec![Value::Null; 256],
+            globals: vec![Value::Null; initial_size],
             global_names,
             handlers: Vec::new(),
             modules: HashMap::new()
@@ -97,13 +104,19 @@ impl VM {
         // Astuce : On l'ajoute manuellement à global_names et globals
         {
             let mut names = vm.global_names.borrow_mut();
-            let id = names.len() as u8;
-            names.insert("__ARGS__".to_string(), id);
-            
-            if id as usize >= vm.globals.len() {
-                vm.globals.resize((id + 1) as usize, Value::Null);
+            if !names.contains_key("__ARGS__") {
+                let id = names.len() as u8;
+                names.insert("__ARGS__".to_string(), id);
+                // Si jamais on dépasse la taille initiale (peu probable avec le max(..., 256))
+                if id as usize >= vm.globals.len() {
+                    vm.globals.resize((id + 1) as usize, Value::Null);
+                }
+                vm.globals[id as usize] = args_list;
+            } else {
+                // Si __ARGS__ existe déjà (compilé), on récupère son ID
+                let id = *names.get("__ARGS__").unwrap();
+                vm.globals[id as usize] = args_list;
             }
-            vm.globals[id as usize] = args_list;
         }
 
         vm
