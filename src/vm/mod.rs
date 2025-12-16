@@ -1136,6 +1136,7 @@ impl VM {
                     (Value::List(_), "list") => true,
                     (Value::Dict(_), "dict") => true,
                     (Value::Function(_), "func") => true, // Ou "function"
+                    (Value::Bytes(_), "bytes") => true,
                     (Value::Null, _) => false, // Null n'est généralement pas le type attendu (sauf "any" ?)
                     (_, "any") => true,
                     _ => false,
@@ -1585,6 +1586,54 @@ impl VM {
                 _ => return Err(format!("Unknown dict method '{}'", method_name).into())
             },
 
+            Value::Bytes(b) => match method_name.as_str() {
+                "len" => Value::Integer(b.borrow().len() as i64),
+                
+                "is_empty" => Value::Boolean(b.borrow().is_empty()),
+                
+                "at" => {
+                    // Retourne l'octet sous forme d'entier (0-255)
+                    let idx = args[0].as_int().unwrap_or(0) as usize;
+                    if let Some(byte) = b.borrow().get(idx) {
+                        Value::Integer(*byte as i64)
+                    } else {
+                        Value::Null
+                    }
+                },
+
+                "slice" => {
+                    // Extrait une sous-partie des octets
+                    let len = b.borrow().len();
+                    let start = args.get(0).and_then(|v| v.as_int().ok()).unwrap_or(0) as usize;
+                    let end = args.get(1).and_then(|v| v.as_int().ok()).unwrap_or(len as i64) as usize;
+                    
+                    let start = start.min(len);
+                    let end = end.min(len).max(start);
+                    
+                    let slice = b.borrow()[start..end].to_vec();
+                    Value::Bytes(Rc::new(RefCell::new(slice)))
+                },
+
+                "to_string" => {
+                    // Tente de convertir les octets en String UTF-8
+                    // Utile pour lire un fichier texte chargé en mode binaire
+                    let bytes = b.borrow();
+                    match String::from_utf8(bytes.clone()) {
+                        Ok(s) => Value::String(s),
+                        Err(_) => Value::Null, // Ou erreur, ou string partielle
+                    }
+                },
+                
+                "to_hex" => {
+                    // Debug : Affiche en hexadécimal "1F A2 ..."
+                    let bytes = b.borrow();
+                    let hex: String = bytes.iter().map(|b| format!("{:02X}", b)).collect();
+                    Value::String(hex)
+                },
+
+                _ => return Err(format!("Unknown bytes method '{}'", method_name).into())
+            },
+
             Value::Range(start, end, step) => match method_name.as_str() {
                 // Pour que foreach sache combien de tours faire
                 "len" => {
@@ -1683,6 +1732,10 @@ impl VM {
                     
                     Value::String(sub)
                 },
+
+                "to_bytes" => {
+                    Value::Bytes(Rc::new(RefCell::new(s.as_bytes().to_vec())))
+                }
                 
                 // --- Transformation ---
                 "trim" => {

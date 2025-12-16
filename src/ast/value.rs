@@ -80,6 +80,7 @@ pub enum Value {
     Interface(Rc<InterfaceData>),
     Native(String),
     Range(i64, i64, i64),
+    Bytes(Rc<RefCell<Vec<u8>>>),
     Null
 }
 
@@ -123,6 +124,7 @@ impl fmt::Display for Value {
             Value::Interface(interface) => write!(f, "<Interface {}>", interface.name),
             Value::Native(name) => write!(f, "<Native Fn {}>", name),
             Value::Range(s, e, step) => write!(f, "{}..{} (step {})", s, e, step),
+            Value::Bytes(b) => write!(f, "<Bytes size={}>", b.borrow().len()),
         }
     }
 }

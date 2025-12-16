@@ -1,5 +1,7 @@
 use crate::{Value, NativeFn};
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::Mutex;
 use std::net::{TcpListener, TcpStream};
 use std::io::{Read, Write};
@@ -29,6 +31,7 @@ pub fn register(map: &mut HashMap<String, NativeFn>) {
     map.insert("sock_accept".to_string(), sock_accept);
     map.insert("sock_connect".to_string(), sock_connect);
     map.insert("sock_read".to_string(), sock_read);
+    map.insert("sock_read_bytes".to_string(), sock_read_bytes);
     map.insert("sock_write".to_string(), sock_write);
     map.insert("sock_close".to_string(), sock_close);
 }
@@ -120,17 +123,47 @@ fn sock_read(args: Vec<Value>) -> Result<Value, String> {
     Ok(Value::String(s))
 }
 
-// 5. WRITE
-fn sock_write(args: Vec<Value>) -> Result<Value, String> {
+// Retourne les données brutes, parfait pour les images ou l'upload
+fn sock_read_bytes(args: Vec<Value>) -> Result<Value, String> {
     let id = args[0].as_int()? as usize;
-    let data = args[1].as_str()?;
+    let size = args[1].as_int()? as usize; 
 
     let mut guard = STATE.lock().unwrap();
     let state = &mut guard.0;
     
     let stream = state.streams.get_mut(&id).ok_or("Invalid Stream ID")?;
     
-    stream.write_all(data.as_bytes()).map_err(|e| e.to_string())?;
+    let mut buffer = vec![0; size];
+    let bytes_read = stream.read(&mut buffer).map_err(|e| e.to_string())?;
+    
+    // On garde uniquement ce qu'on a lu
+    buffer.truncate(bytes_read);
+    
+    // On emballe dans Value::Bytes
+    Ok(Value::Bytes(Rc::new(RefCell::new(buffer))))
+}
+
+// 5. WRITE
+fn sock_write(args: Vec<Value>) -> Result<Value, String> {
+    let id = args[0].as_int()? as usize;
+    let content = &args[1];
+
+    let mut guard = STATE.lock().unwrap();
+    let state = &mut guard.0;
+    
+    let stream = state.streams.get_mut(&id).ok_or("Invalid Stream ID")?;
+    
+    let res = match content {
+        Value::String(s) => stream.write_all(s.as_bytes()),
+        
+        // Support du type Bytes : on écrit le buffer brut
+        Value::Bytes(b) => stream.write_all(&b.borrow()),
+        
+        // Fallback (ex: Integer) -> Convertir en string
+        _ => stream.write_all(content.to_string().as_bytes()),
+    };
+
+    res.map_err(|e| e.to_string())?;
     
     Ok(Value::Null)
 }

@@ -22,6 +22,7 @@
     - [Lists](structures/lists.md)
     - [Dictionaries](structures/dictionaries.md)
     - [Strings](structures/strings.md)
+    - [Bytes](structures/bytes.md)
 
 - [Functions & Functional Programming](functions/README.md)
     - [Function Declaration](functions/declaration.md)

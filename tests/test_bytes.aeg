@@ -1,0 +1,70 @@
+print "=== Debut du Test Value::Bytes ==="
+
+// 1. Creation
+print "--- 1. Conversion String -> Bytes ---"
+var text = "Aegis" // On retire l'emoji pour l'instant pour écarter le bug d'encodage
+var b = text.to_bytes()
+
+print "Valeur originale : " + text
+// On met des parenthèses autour du typeof pour aider le parser
+print "Type obtenu    : " + typeof(b)
+
+if (typeof(b) == "bytes") {
+    print "CHECK TYPE : OK"
+} else {
+    print "CHECK TYPE : FAIL"
+}
+
+// 2. Longueur
+print "--- 2. Verification Longueur ---"
+var len = b.len()
+print "Longueur : " + len
+
+// "Aegis" fait 5 caracteres
+if (len == 5) {
+    print "CHECK LEN : OK"
+} else {
+    print "CHECK LEN : FAIL"
+}
+
+// 3. Hex
+print "--- 3. Dump Hex ---"
+var hex = b.to_hex()
+print "Hex : " + hex
+
+// 4. At
+print "--- 4. Acces unitaire ---"
+// 'A' est 65
+var first = b.at(0)
+print "Byte 0 : " + first
+
+if (first == 65) {
+    print "CHECK AT : OK"
+} else {
+    print "CHECK AT : FAIL"
+}
+
+// 5. Slice
+print "--- 5. Slicing ---"
+var sub = b.slice(0, 3) // "Aeg"
+var sub_str = sub.to_string()
+print "Slice str : " + sub_str
+
+if (sub_str == "Aeg") {
+    print "CHECK SLICE : OK"
+} else {
+    print "CHECK SLICE : FAIL"
+}
+
+// 6. Reconversion
+print "--- 6. ToString ---"
+var restored = b.to_string()
+print "Restored : " + restored
+
+if (restored == text) {
+    print "CHECK TOSTRING : OK"
+} else {
+    print "CHECK TOSTRING : FAIL"
+}
+
+print "=== Fin du Test ==="

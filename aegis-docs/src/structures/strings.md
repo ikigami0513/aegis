@@ -30,6 +30,7 @@ print first + " " + second // "Hello World"
 | `.is_empty()` | Returns `true` if the string length is 0. | `"".is_empty()` |
 | `.pad_start(len, char)` | Pads the start with `char` (default " ") until length is reached. | `"1".pad_start(3, "0")` ("001") |
 | `.pad_end(len, char)` | Pads the end with `char` (default " ") until length is reached. | `"Hi".pad_end(5, "!")` ("Hi!!!") |
+| `.to_bytes()` | Converts the string to a `Bytes` object (UTF-8). | `"Aegis".to_bytes()` |
 
 ### Examples
 Cleaning Input

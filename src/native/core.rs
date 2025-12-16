@@ -1,10 +1,11 @@
 use crate::ast::Value;
-use std::{collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 pub fn register(map: &mut HashMap<String, super::NativeFn>) {
     map.insert("to_str".to_string(), to_str);
     map.insert("to_int".to_string(), to_int);
     map.insert("to_float".to_string(), to_float);
+    map.insert("to_bytes".to_string(), to_bytes);
     map.insert("chr".to_string(), chr);
     map.insert("ord".to_string(), ord);
     map.insert("len".to_string(), len);
@@ -23,6 +24,11 @@ fn to_int(args: Vec<Value>) -> Result<Value, String> {
 
 fn to_float(args: Vec<Value>) -> Result<Value, String> {
     Ok(Value::Float(args[0].as_float()?))
+}
+
+fn to_bytes(args: Vec<Value>) -> Result<Value, String> {
+    let s = args[0].as_str()?;
+    Ok(Value::Bytes(Rc::new(RefCell::new(s.as_bytes().to_vec()))))
 }
 
 fn chr(args: Vec<Value>) -> Result<Value, String> {
@@ -102,6 +108,7 @@ fn type_of(args: Vec<Value>) -> Result<Value, String> {
         Value::Function(..) => "function".to_string(),
         Value::Class { .. } => "class".to_string(),
         Value::Interface(_) => "interface".to_string(),
+        Value::Bytes(_) => "bytes".to_string(),
                                     
         // Pour l'instance, on récupère le nom dynamiquement
         Value::Instance(i) => {

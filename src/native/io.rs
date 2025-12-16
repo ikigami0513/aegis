@@ -1,11 +1,14 @@
 use crate::ast::Value;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
+use std::rc::Rc;
 
 pub fn register(map: &mut HashMap<String, super::NativeFn>) {
     map.insert("io_read".to_string(), io_read);
+    map.insert("io_read_bytes".to_string(), io_read_bytes);
     map.insert("io_write".to_string(), io_write);
     map.insert("io_append".to_string(), io_append);
     map.insert("io_exists".to_string(), io_exists);
@@ -22,6 +25,20 @@ fn io_read(args: Vec<Value>) -> Result<Value, String> {
     match fs::read_to_string(&path) {
         Ok(content) => Ok(Value::String(content)),
         Err(_) => Ok(Value::Null)
+    }
+}
+
+fn io_read_bytes(args: Vec<Value>) -> Result<Value, String> {
+    if args.len() != 1 {
+        return Err("Usage: File.read_bytes(path)".into());
+    }
+
+    let path_str = args[0].as_str().map_err(|_| "Path must be a string")?;
+    
+    // std::fs::read lit tout le fichier dans un Vec<u8>
+    match std::fs::read(&path_str) {
+        Ok(bytes) => Ok(Value::Bytes(Rc::new(RefCell::new(bytes)))),
+        Err(e) => Err(format!("Failed to read file '{}': {}", path_str, e)),
     }
 }
 
